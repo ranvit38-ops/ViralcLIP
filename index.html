@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Ready To Serve Foundation — Donate to our Old Age Home</title>
+  <meta name="description" content="Donate directly to the Ready To Serve Foundation free old age home in Vanasthalipuram, Hyderabad. Your gift feeds and cares for elders with nowhere else to turn. Pay instantly by UPI." />
+  <meta name="theme-color" content="#0f5132" />
+  <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg" />
+
+  <!-- Social share preview -->
+  <meta property="og:title" content="Ready To Serve Foundation — Give an elder a warm meal" />
+  <meta property="og:description" content="Your donation goes directly to our free old age home in Hyderabad. Pay instantly by UPI." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/img/poster-celebration.jpg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body>
+
+  <!-- ============ NAV ============ -->
+  <header class="nav" id="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="#top" aria-label="Ready To Serve Foundation home">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+        </span>
+        <span class="brand__text">Ready&nbsp;To&nbsp;Serve<small>Foundation</small></span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="#about">Our Home</a>
+        <a href="#impact">Your Impact</a>
+        <a href="#stories">Stories</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <a href="#donate" class="btn btn--primary btn--sm nav__cta">Donate&nbsp;Now</a>
+    </div>
+  </header>
+
+  <!-- ============ HERO ============ -->
+  <main id="top">
+  <section class="hero">
+    <div class="hero__bg" aria-hidden="true">
+      <video class="hero__video" autoplay muted loop playsinline poster="assets/img/poster-celebration.jpg">
+        <source src="assets/video/celebration.mp4" type="video/mp4" />
+      </video>
+      <div class="hero__scrim"></div>
+    </div>
+
+    <div class="wrap hero__inner">
+      <span class="eyebrow">Free Old Age Home · Vanasthalipuram, Hyderabad</span>
+      <h1 class="hero__title">No elder should<br/>face old age <em>alone.</em></h1>
+      <p class="hero__lede">At the Ready&nbsp;To&nbsp;Serve Foundation we give abandoned and destitute elders a home — meals, medicine, dignity and family. Your donation goes <strong>directly</strong> to the people in these videos.</p>
+
+      <div class="hero__cta">
+        <a href="#donate" class="btn btn--primary btn--lg">Donate now <span aria-hidden="true">→</span></a>
+        <a href="#stories" class="btn btn--ghost btn--lg">Watch their stories</a>
+      </div>
+
+      <ul class="hero__stats" role="list">
+        <li><strong data-count="40">40</strong><span>Elders cared for</span></li>
+        <li><strong data-count="1095">1,095</strong><span>Meals served / month</span></li>
+        <li><strong>100%</strong><span>Goes to the home</span></li>
+      </ul>
+    </div>
+    <a href="#about" class="hero__scroll" aria-label="Scroll down">▾</a>
+  </section>
+
+  <!-- ============ ABOUT ============ -->
+  <section class="section about" id="about">
+    <div class="wrap about__grid">
+      <div class="about__media">
+        <video class="media-card" controls muted playsinline preload="none"
+               poster="assets/img/poster-testimonial.jpg">
+          <source src="assets/video/testimonial.mp4" type="video/mp4" />
+        </video>
+        <span class="media-card__tag">A resident shares his thanks</span>
+      </div>
+      <div class="about__copy">
+        <span class="kicker">Who we are</span>
+        <h2>A real home, run on kindness.</h2>
+        <p>The Ready&nbsp;To&nbsp;Serve Foundation runs a <strong>free old age home</strong> in Vanasthalipuram, Hyderabad for elders who have been left with no family, no income and nowhere to go.</p>
+        <p>Every rupee you give buys real things our residents need today — hot meals, medicines, clothes, a clean bed, and the joy of being remembered on their birthday.</p>
+        <ul class="ticks" role="list">
+          <li>Three nutritious meals, every single day</li>
+          <li>Medicines &amp; regular health check-ups</li>
+          <li>Birthday celebrations so no elder feels forgotten</li>
+          <li>Run by volunteers — donations reach the home, not overheads</li>
+        </ul>
+        <a href="#donate" class="btn btn--primary">Help us keep the lights on</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ IMPACT ============ -->
+  <section class="section impact" id="impact">
+    <div class="wrap">
+      <div class="section__head">
+        <span class="kicker">Your impact</span>
+        <h2>See exactly what your gift does</h2>
+        <p class="section__sub">Choose an amount on the donation card and you'll know precisely what it provides. Small or large, it arrives the same day.</p>
+      </div>
+      <div class="impact__grid" id="impactGrid">
+        <!-- filled by JS from config presets -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DONATE ============ -->
+  <section class="section donate" id="donate">
+    <div class="wrap donate__grid">
+
+      <div class="donate__intro">
+        <span class="kicker kicker--light">Give in 30 seconds</span>
+        <h2>Send your gift <em>directly</em> to the home</h2>
+        <p>We use <strong>UPI</strong> so your money lands <strong>instantly and directly</strong> in the foundation's bank account — no fees, no middle-man, 100% reaches the elders.</p>
+        <ul class="donate__assure" role="list">
+          <li><svg viewBox="0 0 24 24" class="i"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Instant &amp; direct bank-to-bank</li>
+          <li><svg viewBox="0 0 24 24" class="i"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> No platform or processing fees</li>
+          <li><svg viewBox="0 0 24 24" class="i"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Works on any phone or laptop</li>
+        </ul>
+        <p class="donate__call">Prefer to talk first? Call or WhatsApp
+          <a id="phoneLink" href="#" class="link-strong"></a>
+        </p>
+      </div>
+
+      <!-- DONATION CARD -->
+      <div class="card donate__card" id="donateCard">
+        <h3 class="card__title">Choose your gift</h3>
+
+        <div class="amount-grid" id="amountGrid" role="group" aria-label="Choose an amount">
+          <!-- preset buttons injected by JS -->
+        </div>
+
+        <label class="custom-amount" for="customAmount">
+          <span>Or enter your own amount</span>
+          <div class="custom-amount__field">
+            <span class="rupee">₹</span>
+            <input id="customAmount" type="number" inputmode="numeric" min="1" step="1" placeholder="Amount" />
+          </div>
+        </label>
+        <p class="amount-note" id="amountNote"></p>
+
+        <!-- Pay actions -->
+        <a id="upiPayBtn" class="btn btn--primary btn--lg btn--block" href="#">
+          Pay ₹<span id="payAmount">1000</span> with UPI app
+        </a>
+        <p class="hint hint--mobile">Opens Google&nbsp;Pay, PhonePe, Paytm or any UPI app on your phone.</p>
+
+        <div class="qr-block" id="qrBlock">
+          <div class="qr-block__code" id="qrCode" aria-label="UPI QR code"></div>
+          <div class="qr-block__copy">
+            <p class="qr-block__lead">On a laptop? <strong>Scan to pay</strong> with any UPI app.</p>
+            <button class="copy-row" id="copyUpi" type="button">
+              <span class="copy-row__label">UPI ID</span>
+              <span class="copy-row__value" id="upiIdText">—</span>
+              <span class="copy-row__btn" aria-hidden="true">Copy</span>
+            </button>
+            <p class="copied" id="copiedMsg" hidden>Copied ✓</p>
+          </div>
+        </div>
+
+        <!-- Optional card link -->
+        <a id="cardDonateBtn" class="btn btn--ghost btn--block" href="#" hidden>Donate by debit / credit card</a>
+
+        <!-- Optional bank details -->
+        <details class="bank" id="bankDetails" hidden>
+          <summary>Bank transfer (NEFT / IMPS)</summary>
+          <dl class="bank__list" id="bankList"></dl>
+        </details>
+
+        <p class="card__foot">A receipt can be issued on request. Thank you for serving with us. 🙏</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STORIES ============ -->
+  <section class="section stories" id="stories">
+    <div class="wrap">
+      <div class="section__head">
+        <span class="kicker">From inside the home</span>
+        <h2>The people you're helping</h2>
+        <p class="section__sub">Real moments from our home — gratitude, prayer, and a birthday no one will forget. Tap any clip to play with sound.</p>
+      </div>
+      <div class="stories__grid">
+        <figure class="story">
+          <video controls playsinline preload="none" poster="assets/img/poster-celebration.jpg">
+            <source src="assets/video/celebration.mp4" type="video/mp4" />
+          </video>
+          <figcaption>“అన్నదాత! సుఖీభవ!” — Blessings to every giver. A sponsored birthday at the home.</figcaption>
+        </figure>
+        <figure class="story">
+          <video controls playsinline preload="none" poster="assets/img/poster-clip1.jpg">
+            <source src="assets/video/clip1.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Our residents, together as a family.</figcaption>
+        </figure>
+        <figure class="story">
+          <video controls playsinline preload="none" poster="assets/img/poster-clip2.jpg">
+            <source src="assets/video/clip2.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Everyday life and care inside the foundation.</figcaption>
+        </figure>
+      </div>
+      <p class="stories__reel">See more on our <a id="reelLink" href="#" target="_blank" rel="noopener">Instagram reel →</a></p>
+    </div>
+  </section>
+
+  <!-- ============ FINAL CTA ============ -->
+  <section class="section finalcta">
+    <div class="wrap finalcta__inner">
+      <h2>One meal. One elder. Today.</h2>
+      <p>It takes less than a minute, and it changes someone's whole day.</p>
+      <a href="#donate" class="btn btn--primary btn--lg">Donate now <span aria-hidden="true">→</span></a>
+    </div>
+  </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer" id="contact">
+    <div class="wrap footer__grid">
+      <div>
+        <div class="brand brand--footer">
+          <span class="brand__mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          </span>
+          <span class="brand__text">Ready To Serve<small>Foundation</small></span>
+        </div>
+        <p class="footer__blurb" id="footerProject"></p>
+      </div>
+      <div class="footer__col">
+        <h4>Contact</h4>
+        <p id="footerLocation"></p>
+        <p><a id="footerPhone" href="#" class="link-strong"></a></p>
+        <p id="footerEmailWrap" hidden><a id="footerEmail" href="#"></a></p>
+      </div>
+      <div class="footer__col">
+        <h4>Give</h4>
+        <p><a href="#donate" class="link-strong">Donate by UPI →</a></p>
+        <p id="footerRegWrap" hidden>Reg: <span id="footerReg"></span></p>
+        <p class="footer__note">100% of your gift reaches the home.</p>
+      </div>
+    </div>
+    <div class="wrap footer__base">
+      <span>© <span id="year"></span> Ready To Serve Foundation. Made with care.</span>
+      <a href="#top">Back to top ↑</a>
+    </div>
+  </footer>
+
+  <!-- Sticky mobile donate bar -->
+  <a href="#donate" class="sticky-donate" id="stickyDonate">Donate ₹<span id="stickyAmount">1000</span> →</a>
+
+  <!-- QR library (renders the UPI QR in-browser; vendored locally so it works anywhere, even offline) -->
+  <script src="assets/js/qrcode.min.js"></script>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
