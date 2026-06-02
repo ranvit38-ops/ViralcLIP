@@ -1,9 +1,20 @@
 name: Deploy site to GitHub Pages
 
+# ---------------------------------------------------------------------------
+# PREREQUISITES (one-time, done by the repo owner in the GitHub UI):
+#   1. Settings -> Pages -> "Build and deployment" -> Source = "GitHub Actions"
+#   2. GitHub Pages on a PRIVATE repo needs a paid plan (Pro/Team/Enterprise).
+#      On the free plan, either make the repo public OR host elsewhere
+#      (e.g. drag the folder onto https://app.netlify.com/drop for a free URL).
+#
+# Once Pages is enabled, run this workflow from the Actions tab ("Run workflow")
+# or it will run automatically on the next push to the branch below.
+# ---------------------------------------------------------------------------
+
 on:
+  workflow_dispatch:
   push:
     branches: ["claude/adoring-euler-bJRUZ"]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,10 +35,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure Pages (auto-enable)
+      - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
