@@ -3,6 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!-- Security: no card data is handled here; payments are delegated to
+       PCI-compliant providers (UPI apps, PayPal, hosted pages) over HTTPS.
+       This Content-Security-Policy is intentionally non-breaking (allows the
+       site's own inlined script/style) while blocking framing, plugins,
+       base-tag hijacking and unexpected third-party connections. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://www.paypal.com; frame-src https://www.paypal.com; upgrade-insecure-requests" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="color-scheme" content="light" />
+
   <title>Ready To Serve Foundation — Donate to our Old Age Home</title>
   <meta name="description" content="Donate directly to the Ready To Serve Foundation free old age home in Vanasthalipuram, Hyderabad. Your gift feeds and cares for elders with nowhere else to turn. Pay instantly by UPI." />
   <meta name="theme-color" content="#0f5132" />
@@ -129,7 +139,15 @@
 
       <!-- DONATION CARD -->
       <div class="card donate__card" id="donateCard">
-        <h3 class="card__title">Choose your gift</h3>
+        <div class="card__head">
+          <h3 class="card__title">Choose your gift</h3>
+          <label class="currency-sel" for="currencySel">
+            <span class="currency-sel__lbl">Currency</span>
+            <select id="currencySel" aria-label="Choose currency">
+              <option value="INR">INR (₹)</option>
+            </select>
+          </label>
+        </div>
 
         <div class="amount-grid" id="amountGrid" role="group" aria-label="Choose an amount">
           <!-- preset buttons injected by JS -->
@@ -138,22 +156,21 @@
         <label class="custom-amount" for="customAmount">
           <span>Or enter your own amount</span>
           <div class="custom-amount__field">
-            <span class="rupee">₹</span>
-            <input id="customAmount" type="number" inputmode="numeric" min="1" step="1" placeholder="Amount" />
+            <span class="rupee" id="curSymbol">₹</span>
+            <input id="customAmount" type="number" inputmode="decimal" min="1" step="any" placeholder="Amount" />
           </div>
         </label>
         <p class="amount-note" id="amountNote"></p>
 
-        <!-- Pay actions -->
-        <a id="upiPayBtn" class="btn btn--primary btn--lg btn--block" href="#">
-          Pay ₹<span id="payAmount">1000</span> with UPI app
-        </a>
-        <p class="hint hint--mobile">Opens Google&nbsp;Pay, PhonePe, Paytm or any UPI app on your phone.</p>
+        <!-- Pay action (label + destination set by script per currency/method) -->
+        <a id="payBtn" class="btn btn--primary btn--lg btn--block" href="#" role="button">Choose an amount</a>
+        <p class="hint hint--mobile" id="payHint">Opens Google&nbsp;Pay, PhonePe, Paytm or any UPI app on your phone.</p>
+        <p class="pay-reason" id="payReason" hidden></p>
 
         <div class="qr-block" id="qrBlock">
-          <div class="qr-block__code" id="qrCode" aria-label="UPI QR code"></div>
+          <div class="qr-block__code" id="qrCode" aria-label="Payment QR code"></div>
           <div class="qr-block__copy">
-            <p class="qr-block__lead">On a laptop? <strong>Scan to pay</strong> with any UPI app.</p>
+            <p class="qr-block__lead" id="qrLead">On a laptop? <strong>Scan to pay</strong> with any UPI app.</p>
             <button class="copy-row" id="copyUpi" type="button">
               <span class="copy-row__label">UPI ID</span>
               <span class="copy-row__value" id="upiIdText">8790815527@upi</span>
@@ -163,16 +180,13 @@
           </div>
         </div>
 
-        <!-- Optional card link -->
-        <a id="cardDonateBtn" class="btn btn--ghost btn--block" href="#" hidden>Donate by debit / credit card</a>
-
         <!-- Optional bank details -->
         <details class="bank" id="bankDetails" hidden>
-          <summary>Bank transfer (NEFT / IMPS)</summary>
+          <summary>Bank transfer (NEFT / IMPS / SWIFT)</summary>
           <dl class="bank__list" id="bankList"></dl>
         </details>
 
-        <p class="card__foot">A receipt can be issued on request. Thank you for serving with us. 🙏</p>
+        <p class="card__foot">100% reaches the home · no card details are stored on this site · a receipt can be issued on request. 🙏</p>
       </div>
     </div>
   </section>
@@ -251,7 +265,7 @@
   </footer>
 
   <!-- Sticky mobile donate bar -->
-  <a href="#donate" class="sticky-donate" id="stickyDonate">Donate ₹<span id="stickyAmount">1000</span> →</a>
+  <a href="#donate" class="sticky-donate" id="stickyDonate">Donate <span id="stickyAmount">₹1,000</span> →</a>
 
   <!-- QR library (renders the UPI QR in-browser; vendored locally so it works anywhere, even offline) -->
   <script src="assets/js/qrcode.min.js"></script>

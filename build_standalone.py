@@ -56,37 +56,44 @@ html = re.sub(
     flags=re.S,
 )
 
-# 4) pre-render the donation amount buttons + impact cards so the UI is fully
-#    visible even before/without JavaScript (JS re-renders identically + wires events)
-presets = [
-    (200,  "A day of meals for one elder"),
-    (500,  "Medicines for a week"),
-    (1000, "Feed an elder for a month"),
-    (5000, "Sponsor a birthday celebration"),
+# 4) pre-render the currency options, amount buttons + impact cards so the UI is
+#    fully visible even before/without JavaScript (JS re-renders identically + wires events)
+tier_labels = [
+    "A day of meals for an elder",
+    "Medicines for a week",
+    "A month of food & care",
+    "Sponsor a birthday celebration",
+]
+default_tier = 2
+inr_amounts = [200, 500, 1000, 5000]
+currencies = [
+    ("INR", "₹"), ("USD", "$"), ("EUR", "€"), ("GBP", "£"),
+    ("AUD", "A$"), ("CAD", "C$"), ("SGD", "S$"), ("AED", "AED"),
 ]
 inr = lambda n: format(n, ",d")  # 1000 -> 1,000
 
+currency_opts = "\n              ".join(
+    '<option value="%s">%s (%s)</option>' % (code, code, sym) for code, sym in currencies
+)
 amount_btns = "\n".join(
-    '          <button class="amount-btn%s" type="button" data-amount="%d">'
+    '          <button class="amount-btn%s" type="button" data-tier="%d" data-amount="%d">'
     '<span class="amount-btn__amt">₹%s</span>'
     '<span class="amount-btn__lbl">%s</span></button>'
-    % (" is-active" if a == 1000 else "", a, inr(a), lbl)
-    for a, lbl in presets
+    % (" is-active" if i == default_tier else "", i, a, inr(a), tier_labels[i])
+    for i, a in enumerate(inr_amounts)
 )
 impact_cards = "\n".join(
-    '        <button class="impact-card" type="button" data-amount="%d">'
+    '        <button class="impact-card" type="button" data-tier="%d">'
     '<div class="impact-card__amt">₹%s</div>'
     '<div class="impact-card__lbl">%s</div>'
     '<div class="impact-card__cta">Give this →</div></button>'
-    % (a, inr(a), lbl)
-    for a, lbl in presets
+    % (i, inr(a), tier_labels[i])
+    for i, a in enumerate(inr_amounts)
 )
 
+html = html.replace('<option value="INR">INR (₹)</option>', currency_opts)
 html = html.replace("          <!-- preset buttons injected by JS -->", amount_btns)
 html = html.replace("        <!-- filled by JS from config presets -->", impact_cards)
-# default labels for no-JS view
-html = html.replace('<span id="payAmount">1000</span>', '<span id="payAmount">1,000</span>')
-html = html.replace('<span id="stickyAmount">1000</span>', '<span id="stickyAmount">1,000</span>')
 
 (root / "index.html").write_text(html, encoding="utf-8")
 print("Built self-contained index.html: %d KB" % (len((root/'index.html').read_bytes())//1024))

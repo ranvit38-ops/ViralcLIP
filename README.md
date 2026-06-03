@@ -14,31 +14,48 @@ the videos play; everything else works even on its own.)
 
 To put it online so you can open it on your **phone**, see _Going live_ below.
 
-## ✅ The one thing to change before going live: the UPI ID
+## 💳 Donations — works in any currency, and securely
 
-Open **`index.html`**, scroll to the clearly-marked **EDIT** block near the
-bottom (`window.RTS_CONFIG = { ... }`), and replace:
+Donors pick a **currency** on the donation card. The site then routes them to the
+right **PCI-compliant** payment provider — **no card details are ever entered or
+stored on this website.** All it does is build a secure outbound link:
+
+| Currency | Goes to | Notes |
+|---|---|---|
+| **INR (₹)** | **UPI** | Instant, zero-fee, straight to their bank. Phone + laptop (QR). |
+| **Any other** | **PayPal** | `paypal.me` works in every currency; pay by card or PayPal. |
+| (alt) | **Hosted page** | Stripe / Razorpay / Donorbox / GoFundMe link, if you prefer. |
+
+### Turn it on (the EDIT block near the bottom of `index.html`)
 
 ```js
-upiId: "8790815527@upi",   // <-- REPLACE with the foundation's VERIFIED UPI ID
+payments: {
+  upiId: "8790815527@upi",   // INR — REPLACE with the foundation's VERIFIED UPI ID
+  paypalHandle: "",          // e.g. "ReadyToServe"  -> enables ALL other currencies
+  hostedDonateUrl: ""        // optional: a Stripe/Razorpay/Donorbox/GoFundMe link
+}
 ```
 
-with the foundation's **real, verified UPI ID** (confirm the exact handle with
-them — e.g. `name@okhdfcbank`, `9876543210@ybl`, `charity@upi`).
+- Set **`upiId`** → ₹ donations work (do a ₹1 test first to confirm the handle).
+- Set **`paypalHandle`** → USD/EUR/GBP/AUD/CAD/SGD/AED… all start working instantly.
+- The currency list and suggested amounts are right below, also editable.
+- **Bank transfer** (incl. international SWIFT) — fill `bank.accountNumber` +
+  `bank.ifsc`/`swift` → a transfer panel appears automatically.
 
-### How donations reach them directly
-When a donor taps **“Pay with UPI app”** (phone) or **scans the QR** (laptop),
-their banking app opens pre-filled with the foundation's UPI ID, the amount they
-chose, and a donation note. The money moves **bank-to-bank, instantly, with no
-fees and no middle-man** — 100% reaches the home. No server, nothing to host.
+> ⚠️ Until you add `upiId` and/or `paypalHandle`, donating shows a friendly
+> "not enabled yet" message instead of a broken link.
 
-> ⚠️ Do a ₹1 test transfer to the UPI ID first to confirm it lands in the right
-> account before sharing the site publicly.
+## 🔒 Security
 
-### Optional extras (same EDIT block)
-- **Bank transfer** — fill `bank.accountNumber` + `bank.ifsc` → a NEFT/IMPS panel appears.
-- **Card / international** — paste a Razorpay/Stripe link into `cardDonateUrl` → a card button appears.
-- **Email, registration/80G number, suggested amounts** — all editable there too.
+- **No card data touches this site** — payments are delegated to UPI apps, PayPal
+  and other PCI-DSS-compliant providers over HTTPS.
+- **Content-Security-Policy** + `X-Frame-Options`, `X-Content-Type-Options`,
+  `Referrer-Policy`, `Permissions-Policy`, `HSTS` and `COOP` are set (in the page
+  `<meta>` and in `_headers` / `netlify.toml` for the host).
+- **Input is validated**: amounts must be positive finite numbers, are clamped,
+  and are URL-encoded; script/HTML can't be injected into any payment link.
+- External links use `rel="noopener noreferrer"`. No trackers, no data collection.
+- Host it over **HTTPS** (Netlify/Pages/Vercel/Cloudflare all give free HTTPS).
 
 ## 🚀 Going live (free, ~1 minute, gives a link that works on phones)
 

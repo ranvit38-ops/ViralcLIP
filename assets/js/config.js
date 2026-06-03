@@ -1,11 +1,14 @@
 /* =====================================================================
    READY TO SERVE FOUNDATION  —  SITE CONFIGURATION
    ---------------------------------------------------------------------
-   This is the ONLY file you need to edit to make donations go directly
-   to the charity. Replace the placeholder values below with the real
-   ones (you said "more info will follow" — drop them in here).
+   This is the ONLY block you need to edit. Replace the placeholders to
+   make donations land directly with the charity, in ANY currency.
 
-   Nothing else in the codebase needs to change.
+   HOW MONEY IS COLLECTED (no card data ever touches this website —
+   everything is handed off to PCI-compliant, HTTPS payment providers):
+     • INR  -> UPI  (instant, zero-fee, straight to their bank)
+     • Any currency -> PayPal  (paypal.me works in every currency)
+                     -> or any hosted donation page you paste below
    ===================================================================== */
 
 window.RTS_CONFIG = {
@@ -14,45 +17,53 @@ window.RTS_CONFIG = {
   tagline: "A loving home for elders who have no one. Your gift becomes their next warm meal.",
   project: "Free Old Age Home — Vanasthalipuram, Hyderabad",
   location: "Vanasthalipuram, Hyderabad, Telangana, India",
-  phone: "8790815527",                 // call / WhatsApp
-  email: "",                           // optional — add when available
-  regNo: "",                           // optional — Trust / 80G registration number
+  phone: "8790815527",
+  email: "",
+  regNo: "",                              // optional Trust / 80G number
 
-  /* ---- DIRECT DONATIONS (India / UPI) ----
-     UPI sends money INSTANTLY and DIRECTLY into the charity's bank
-     account with zero fees and no middle-man. This is the most direct
-     method possible.
+  /* =================================================================
+     PAYMENT SETTINGS  — fill at least one of these in.
+     ================================================================= */
+  payments: {
+    /* UPI — used automatically for INR (instant, zero fee, direct).
+       >>> Replace with the foundation's VERIFIED UPI ID. <<<            */
+    upiId: "8790815527@upi",              // e.g. name@okhdfcbank, 98765xxxxx@ybl
+    upiPayeeName: "Ready To Serve Foundation",
 
-     >>> Replace upiId with the foundation's real UPI ID. <<<
-     A UPI ID looks like:  name@okhdfcbank  /  9876543210@ybl  /  charity@upi
-     If their UPI is linked to the phone number above it may simply be:
-         8790815527@upi   (confirm with them which bank handle).            */
-  upiId: "8790815527@upi",             // <-- REPLACE with verified UPI ID
-  upiPayeeName: "Ready To Serve Foundation",
+    /* PayPal — enables donations in ANY currency. Just the handle, no
+       https:// — e.g. for paypal.me/ReadyToServe put "ReadyToServe".    */
+    paypalHandle: "",                     // <-- add to enable global card/PayPal giving
 
-  /* ---- Bank transfer (NEFT/IMPS) — optional fallback ---- */
-  bank: {
-    accountName: "",                   // e.g. "Ready To Serve Foundation"
-    accountNumber: "",
-    ifsc: "",
-    bankName: "",
-    branch: ""
+    /* OR a hosted donation page (Stripe Payment Link, Razorpay Page,
+       Donorbox, GoFundMe, etc.). If set, non-UPI currencies open this.  */
+    hostedDonateUrl: ""                   // e.g. "https://donate.stripe.com/xxxx"
   },
 
-  /* ---- International cards / one-tap (optional) ----
-     If you create a Razorpay / Stripe payment link or a Razorpay button,
-     paste the URL here and a "Donate by card" button appears automatically. */
-  cardDonateUrl: "",                   // e.g. "https://rzp.io/l/your-link"
+  /* ---- Bank transfer (optional fallback) ---- */
+  bank: {
+    accountName: "", accountNumber: "", ifsc: "", bankName: "", branch: "", swift: ""
+  },
 
-  /* ---- Suggested amounts (in ₹) and what they pay for ---- */
-  presets: [
-    { amount: 200,  label: "A day of meals for one elder" },
-    { amount: 500,  label: "Medicines for a week" },
-    { amount: 1000, label: "Feed an elder for a month" },
-    { amount: 5000, label: "Sponsor a birthday celebration" }
+  /* ---- Currencies & suggested amounts ----
+     The first entry is the default. Each tier label is shared across
+     currencies; amounts are tuned per currency.                         */
+  tierLabels: [
+    "A day of meals for an elder",
+    "Medicines for a week",
+    "A month of food & care",
+    "Sponsor a birthday celebration"
   ],
-  defaultAmount: 1000,
+  defaultTier: 2,                          // which tier is pre-selected (0-3)
+  currencies: [
+    { code: "INR", symbol: "₹",  locale: "en-IN", amounts: [200, 500, 1000, 5000] },
+    { code: "USD", symbol: "$",  locale: "en-US", amounts: [5, 15, 30, 100] },
+    { code: "EUR", symbol: "€",  locale: "en-IE", amounts: [5, 15, 30, 100] },
+    { code: "GBP", symbol: "£",  locale: "en-GB", amounts: [5, 10, 25, 75] },
+    { code: "AUD", symbol: "A$", locale: "en-AU", amounts: [10, 25, 50, 150] },
+    { code: "CAD", symbol: "C$", locale: "en-CA", amounts: [10, 25, 50, 150] },
+    { code: "SGD", symbol: "S$", locale: "en-SG", amounts: [10, 25, 50, 150] },
+    { code: "AED", symbol: "AED",locale: "en-AE", amounts: [20, 50, 100, 300] }
+  ],
 
-  /* ---- Social / source reel ---- */
   instagramReel: "https://www.instagram.com/reel/DX4B9sgsQLS/"
 };
