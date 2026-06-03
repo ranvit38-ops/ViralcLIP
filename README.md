@@ -1,85 +1,69 @@
 # Ready To Serve Foundation — Donation Website
 
 A warm, mobile-first website for the **Ready To Serve Foundation**, a free old age
-home in Vanasthalipuram, Hyderabad. It lets anyone — on a phone or a laptop —
-send money **directly** to the foundation in about 30 seconds.
+home in Vanasthalipuram, Hyderabad. Anyone — on a phone or a laptop — can send
+money **directly** to the foundation by UPI in about 30 seconds.
 
-It is a plain static website (HTML + CSS + a little JavaScript), so it works
-**anywhere** and can be hosted for free.
+## ✅ How to open / test it
 
----
+**`index.html` is the whole website in one self-contained file** — the design,
+the donation logic, the QR engine and the images are all baked in, so it can
+never load "half-broken." Just **double-click `index.html`** and it opens fully
+styled and working in any browser. (Keep the `assets/video` folder next to it so
+the videos play; everything else works even on its own.)
 
-## ✅ The one thing you must do: add the real payment details
+To put it online so you can open it on your **phone**, see _Going live_ below.
 
-Open **`assets/js/config.js`** and replace the placeholder values. That single
-file controls everything — the charity name, contact details, suggested amounts
-and, most importantly, where the money goes.
+## ✅ The one thing to change before going live: the UPI ID
+
+Open **`index.html`**, scroll to the clearly-marked **EDIT** block near the
+bottom (`window.RTS_CONFIG = { ... }`), and replace:
 
 ```js
 upiId: "8790815527@upi",   // <-- REPLACE with the foundation's VERIFIED UPI ID
-upiPayeeName: "Ready To Serve Foundation",
 ```
 
-### How the money reaches the charity *directly*
+with the foundation's **real, verified UPI ID** (confirm the exact handle with
+them — e.g. `name@okhdfcbank`, `9876543210@ybl`, `charity@upi`).
 
-The site uses **UPI** (India's instant payment system). When a donor taps
-**“Pay with UPI app”** (on a phone) or **scans the QR code** (on a laptop),
-their banking app opens with:
+### How donations reach them directly
+When a donor taps **“Pay with UPI app”** (phone) or **scans the QR** (laptop),
+their banking app opens pre-filled with the foundation's UPI ID, the amount they
+chose, and a donation note. The money moves **bank-to-bank, instantly, with no
+fees and no middle-man** — 100% reaches the home. No server, nothing to host.
 
-- the foundation's **UPI ID** already filled in,
-- the **amount** they chose already filled in,
-- a note saying “Donation to Ready To Serve Foundation”.
+> ⚠️ Do a ₹1 test transfer to the UPI ID first to confirm it lands in the right
+> account before sharing the site publicly.
 
-The money moves **bank-to-bank, instantly, with no fees and no middle-man** —
-100% reaches the home. There is no server in between and nothing for you to host
-or maintain.
-
-> ⚠️ **Important:** Confirm the exact UPI ID with the foundation before going
-> live (e.g. `name@okhdfcbank`, `9876543210@ybl`, etc.). A wrong handle sends
-> money to the wrong place. Do a ₹1 test donation first.
-
-### Optional extras (all in `config.js`)
-- **Bank transfer** — fill in `bank.accountNumber` + `bank.ifsc` and a
-  “Bank transfer (NEFT/IMPS)” panel appears automatically.
-- **Card / international donors** — paste a Razorpay/Stripe payment-link URL into
-  `cardDonateUrl` and a “Donate by card” button appears.
+### Optional extras (same EDIT block)
+- **Bank transfer** — fill `bank.accountNumber` + `bank.ifsc` → a NEFT/IMPS panel appears.
+- **Card / international** — paste a Razorpay/Stripe link into `cardDonateUrl` → a card button appears.
 - **Email, registration/80G number, suggested amounts** — all editable there too.
 
----
+## 🚀 Going live (free, ~1 minute, gives a link that works on phones)
 
-## 🚀 Putting it online (free, ~5 minutes)
+Easiest: drag this folder onto **https://app.netlify.com/drop** — you instantly
+get a free public link. No sign-up, no settings.
 
-Pick any one — they all work on mobile and desktop:
-
-| Host | How |
-|------|-----|
-| **GitHub Pages** | Push this repo → Settings → Pages → Deploy from branch → `/ (root)` |
-| **Netlify** | Drag-and-drop this folder onto [app.netlify.com/drop](https://app.netlify.com/drop) |
-| **Vercel** | `vercel` in this folder, or import the repo at vercel.com |
-| **Cloudflare Pages** | Connect the repo, framework = “None”, output dir = `/` |
-
-To preview locally:
-
-```bash
-python3 -m http.server 8000
-# then open http://localhost:8000
-```
-
----
+Other free hosts: **GitHub Pages** (Settings → Pages → Source = GitHub Actions;
+note: private repos need a paid plan, so make the repo public or use Netlify),
+**Vercel**, **Cloudflare Pages**.
 
 ## 📁 What's inside
 
 ```
-index.html              The whole page
-assets/css/styles.css   Styling (warm green + gold theme, fully responsive)
-assets/js/config.js     👈 EDIT THIS — charity & payment details
-assets/js/main.js       Donation logic, UPI links, live QR, animations
+index.html              👈 THE WEBSITE — open this. Self-contained; edit the config block to set the UPI ID.
 assets/video/           The foundation's videos (compressed for the web)
 assets/img/             Poster images + favicon
+index.src.html          Source template used to build index.html (for developers)
+assets/css, assets/js   Editable source parts (CSS / JS / config / QR engine)
+build_standalone.py     Rebuilds index.html from the source parts:  python3 build_standalone.py
+.github/workflows/      Optional GitHub Pages auto-deploy
 ```
 
-The videos you provided are used as real testimonials in the **Our Home** and
-**Stories** sections.
+Most people only ever touch the EDIT block inside `index.html`. The `index.src.html`
++ `build_standalone.py` route is only if a developer wants to change the layout
+and regenerate the single file.
 
 ---
 
