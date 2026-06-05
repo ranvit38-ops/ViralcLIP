@@ -9,7 +9,7 @@
        This Content-Security-Policy is intentionally non-breaking (allows the
        site's own inlined script/style) while blocking framing, plugins,
        base-tag hijacking and unexpected third-party connections. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://www.paypal.com; frame-src https://www.paypal.com; upgrade-insecure-requests" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self'; connect-src 'self' https://api.stripe.com https://js.stripe.com https://donorbox.org; frame-src https://www.paypal.com https://js.stripe.com https://checkout.stripe.com https://donorbox.org https://*.donorbox.org; object-src 'none'; base-uri 'self'; form-action 'self' https://www.paypal.com; upgrade-insecure-requests" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="color-scheme" content="light" />
 
@@ -139,54 +139,63 @@
 
       <!-- DONATION CARD -->
       <div class="card donate__card" id="donateCard">
-        <div class="card__head">
-          <h3 class="card__title">Choose your gift</h3>
-          <label class="currency-sel" for="currencySel">
-            <span class="currency-sel__lbl">Currency</span>
-            <select id="currencySel" aria-label="Choose currency">
-              <option value="INR">INR (₹)</option>
-            </select>
-          </label>
-        </div>
+        <h3 class="card__title">Make your donation</h3>
 
-        <div class="amount-grid" id="amountGrid" role="group" aria-label="Choose an amount">
-          <!-- preset buttons injected by JS -->
-        </div>
+        <!-- PRIMARY: Card · Apple Pay · Google Pay (hosted & PCI-secure; rendered by script) -->
+        <div id="cardMethod" class="cardpay" aria-live="polite"></div>
 
-        <label class="custom-amount" for="customAmount">
-          <span>Or enter your own amount</span>
-          <div class="custom-amount__field">
-            <span class="rupee" id="curSymbol">₹</span>
-            <input id="customAmount" type="number" inputmode="decimal" min="1" step="any" placeholder="Amount" />
+        <!-- Other ways to give -->
+        <details class="give-more" id="giveMore">
+          <summary class="give-more__sum">
+            <span>Other ways to give</span>
+            <span class="give-more__tag">UPI · PayPal · Bank</span>
+          </summary>
+          <div class="give-more__body">
+            <label class="currency-sel currency-sel--row" for="currencySel">
+              <span class="currency-sel__lbl">Currency</span>
+              <select id="currencySel" aria-label="Choose currency">
+                <option value="INR">INR (₹)</option>
+              </select>
+            </label>
+
+            <div class="amount-grid" id="amountGrid" role="group" aria-label="Choose an amount">
+              <!-- preset buttons injected by JS -->
+            </div>
+
+            <label class="custom-amount" for="customAmount">
+              <span>Or enter your own amount</span>
+              <div class="custom-amount__field">
+                <span class="rupee" id="curSymbol">₹</span>
+                <input id="customAmount" type="number" inputmode="decimal" min="1" step="any" placeholder="Amount" />
+              </div>
+            </label>
+            <p class="amount-note" id="amountNote"></p>
+
+            <a id="payBtn" class="btn btn--primary btn--lg btn--block" href="#" role="button">Choose an amount</a>
+            <p class="hint hint--mobile" id="payHint">Opens Google&nbsp;Pay, PhonePe, Paytm or any UPI app on your phone.</p>
+            <p class="pay-reason" id="payReason" hidden></p>
+
+            <div class="qr-block" id="qrBlock">
+              <div class="qr-block__code" id="qrCode" aria-label="Payment QR code"></div>
+              <div class="qr-block__copy">
+                <p class="qr-block__lead" id="qrLead">On a laptop? <strong>Scan to pay</strong> with any UPI app.</p>
+                <button class="copy-row" id="copyUpi" type="button">
+                  <span class="copy-row__label">UPI ID</span>
+                  <span class="copy-row__value" id="upiIdText">8790815527@upi</span>
+                  <span class="copy-row__btn" aria-hidden="true">Copy</span>
+                </button>
+                <p class="copied" id="copiedMsg" hidden>Copied ✓</p>
+              </div>
+            </div>
+
+            <details class="bank" id="bankDetails" hidden>
+              <summary>Bank transfer (NEFT / IMPS / SWIFT)</summary>
+              <dl class="bank__list" id="bankList"></dl>
+            </details>
           </div>
-        </label>
-        <p class="amount-note" id="amountNote"></p>
-
-        <!-- Pay action (label + destination set by script per currency/method) -->
-        <a id="payBtn" class="btn btn--primary btn--lg btn--block" href="#" role="button">Choose an amount</a>
-        <p class="hint hint--mobile" id="payHint">Opens Google&nbsp;Pay, PhonePe, Paytm or any UPI app on your phone.</p>
-        <p class="pay-reason" id="payReason" hidden></p>
-
-        <div class="qr-block" id="qrBlock">
-          <div class="qr-block__code" id="qrCode" aria-label="Payment QR code"></div>
-          <div class="qr-block__copy">
-            <p class="qr-block__lead" id="qrLead">On a laptop? <strong>Scan to pay</strong> with any UPI app.</p>
-            <button class="copy-row" id="copyUpi" type="button">
-              <span class="copy-row__label">UPI ID</span>
-              <span class="copy-row__value" id="upiIdText">8790815527@upi</span>
-              <span class="copy-row__btn" aria-hidden="true">Copy</span>
-            </button>
-            <p class="copied" id="copiedMsg" hidden>Copied ✓</p>
-          </div>
-        </div>
-
-        <!-- Optional bank details -->
-        <details class="bank" id="bankDetails" hidden>
-          <summary>Bank transfer (NEFT / IMPS / SWIFT)</summary>
-          <dl class="bank__list" id="bankList"></dl>
         </details>
 
-        <p class="card__foot">100% reaches the home · no card details are stored on this site · a receipt can be issued on request. 🙏</p>
+        <p class="card__foot">100% reaches the home · we never see or store card details · receipt on request. 🙏</p>
       </div>
     </div>
   </section>

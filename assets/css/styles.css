@@ -170,7 +170,38 @@ em{font-style:italic;color:var(--gold-500)}
 .card{background:var(--white);color:var(--ink);border-radius:var(--radius-lg);
   padding:clamp(1.4rem,3vw,2.2rem);box-shadow:var(--shadow-lg)}
 .card__head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;margin-bottom:1.1rem;flex-wrap:wrap}
-.card__title{font-size:1.5rem}
+.card__title{font-size:1.5rem;margin-bottom:1.1rem}
+
+/* Card / Apple Pay / Google Pay block */
+.cardpay{margin-bottom:1.1rem}
+.cardpay__btn{flex-direction:column;gap:.4rem;padding-block:1em}
+.cardpay__btn>span{font-size:1.02rem}
+.cardpay__embed{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff}
+.cardpay__embed iframe{display:block;width:100%;border:0}
+.cardpay__title{font-weight:700;text-align:center;margin:.2rem 0 .6rem;color:var(--green-800,#0b3d2e)}
+.cardpay__secure{font-size:.78rem;color:var(--ink-soft);text-align:center;margin:.6rem 0 0;line-height:1.4}
+.cardpay__preview{border:1.5px dashed var(--line);border-radius:16px;padding:1.2rem;text-align:center;background:var(--cream)}
+.cardpay__head{margin-bottom:.6rem}
+.cardpay__note{font-size:.86rem;color:var(--ink-soft);margin:.5rem 0 0}
+.wallets{display:inline-flex;gap:.4rem;flex-wrap:wrap;justify-content:center;align-items:center}
+.wallet{font-weight:800;font-size:.72rem;letter-spacing:.02em;padding:.32em .6em;border-radius:7px;line-height:1;
+  border:1px solid rgba(0,0,0,.1)}
+.wallet--apple{background:#000;color:#fff;border-color:#000}
+.wallet--gpay{background:#fff;color:#3c4043;box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.wallet--card{background:#1a1f71;color:#fff;border-color:#1a1f71}
+.btn .wallets .wallet{transform:translateY(-1px)}
+
+/* "Other ways to give" disclosure */
+.give-more{border-top:1px solid var(--line);margin-top:.4rem;padding-top:.4rem}
+.give-more__sum{display:flex;align-items:center;justify-content:space-between;gap:1rem;cursor:pointer;
+  list-style:none;padding:.7em 0;font-weight:700;color:var(--green-700)}
+.give-more__sum::-webkit-details-marker{display:none}
+.give-more__sum::after{content:"▾";color:var(--ink-soft);transition:transform .25s var(--ease)}
+.give-more[open] .give-more__sum::after{transform:rotate(180deg)}
+.give-more__tag{font-weight:600;font-size:.78rem;color:var(--ink-soft);letter-spacing:.02em}
+.give-more__body{padding-top:.6rem}
+.currency-sel--row{flex-direction:row;align-items:center;gap:.6rem;margin-bottom:1rem}
+.currency-sel--row .currency-sel__lbl{margin:0}
 .currency-sel{display:flex;flex-direction:column;gap:.25rem}
 .currency-sel__lbl{font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft)}
 .currency-sel select{font-family:inherit;font-weight:700;color:var(--green-700);background:var(--cream);

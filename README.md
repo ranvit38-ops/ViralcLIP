@@ -14,36 +14,59 @@ the videos play; everything else works even on its own.)
 
 To put it online so you can open it on your **phone**, see _Going live_ below.
 
-## 💳 Donations — works in any currency, and securely
+## 💳 Donations — card, Apple Pay, Google Pay, any currency — securely
 
-Donors pick a **currency** on the donation card. The site then routes them to the
-right **PCI-compliant** payment provider — **no card details are ever entered or
-stored on this website.** All it does is build a secure outbound link:
+The donation card shows **Card · Apple Pay · Google Pay** first (where donors
+enter their details), with **UPI / PayPal / bank** underneath. **No card data is
+ever entered or stored on this website** — the card form and Apple Pay button are
+served by a trusted, PCI-compliant processor. You just paste one value to switch
+it on.
 
-| Currency | Goes to | Notes |
-|---|---|---|
-| **INR (₹)** | **UPI** | Instant, zero-fee, straight to their bank. Phone + laptop (QR). |
-| **Any other** | **PayPal** | `paypal.me` works in every currency; pay by card or PayPal. |
-| (alt) | **Hosted page** | Stripe / Razorpay / Donorbox / GoFundMe link, if you prefer. |
+### To accept card + Apple Pay + Google Pay (pick ONE, ~5-min free signup)
 
-### Turn it on (the EDIT block near the bottom of `index.html`)
+In the **EDIT block** near the bottom of `index.html`, set one of:
 
 ```js
 payments: {
-  upiId: "8790815527@upi",   // INR — REPLACE with the foundation's VERIFIED UPI ID
-  paypalHandle: "",          // e.g. "ReadyToServe"  -> enables ALL other currencies
-  hostedDonateUrl: ""        // optional: a Stripe/Razorpay/Donorbox/GoFundMe link
+  // (a) EASIEST — Stripe Payment Link (just a URL). Card, Apple Pay,
+  //     Google Pay, name/email + receipt, all on Stripe's secure page.
+  stripePaymentLink: "",        // "https://donate.stripe.com/xxxx"
+
+  // (b) Donorbox — an embedded donation form (also does recurring):
+  donorboxUrl: "",              // "https://donorbox.org/embed/your-campaign"
+
+  // (c) Stripe Buy Button — embedded button (2 values):
+  stripeBuyButtonId: "",        // "buy_btn_xxx"
+  stripePublishableKey: "",     // "pk_live_xxx"
+  ...
 }
 ```
 
-- Set **`upiId`** → ₹ donations work (do a ₹1 test first to confirm the handle).
-- Set **`paypalHandle`** → USD/EUR/GBP/AUD/CAD/SGD/AED… all start working instantly.
-- The currency list and suggested amounts are right below, also editable.
-- **Bank transfer** (incl. international SWIFT) — fill `bank.accountNumber` +
+**Stripe Payment Link is the quickest:** dashboard.stripe.com → *Payment links* →
+*New* → turn on *“Let customers choose what to pay”* → copy the URL. Apple Pay &
+Google Pay appear automatically for eligible devices.
+
+### Also available (no signup needed)
+
+```js
+  upiId: "8790815527@upi",   // INR — instant, zero-fee, direct (REPLACE w/ verified ID)
+  paypalHandle: "",          // "ReadyToServe" -> donations in any currency via PayPal
+```
+
+- **UPI** handles ₹ instantly with zero fees. **PayPal** covers any currency.
+- The currency list + suggested amounts are just below, editable.
+- **Bank transfer** (incl. international **SWIFT**) — fill `bank.accountNumber` +
   `bank.ifsc`/`swift` → a transfer panel appears automatically.
 
-> ⚠️ Until you add `upiId` and/or `paypalHandle`, donating shows a friendly
-> "not enabled yet" message instead of a broken link.
+> ⚠️ Until a provider is set, the card area shows a tidy "ready to switch on"
+> preview (never a broken or fake form), and UPI/PayPal remain usable.
+
+### Security
+- The card form / Apple Pay live inside the **processor's** secure page or iframe
+  (Stripe, Donorbox) — this site never sees raw card numbers (PCI-DSS safe).
+- Only the trusted processor domains are allow-listed in the CSP; any other or
+  non-HTTPS payment URL you paste is **rejected** and falls back to the preview.
+- See the **Security** section below for the full header set.
 
 ## 🔒 Security
 

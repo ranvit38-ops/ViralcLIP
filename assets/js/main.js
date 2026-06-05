@@ -101,6 +101,86 @@
     return "upi://pay?" + p.toString();
   }
 
+  /* ---------- Card / Apple Pay / Google Pay (hosted, PCI-secure) ---------- */
+  function safeUrl(u, hosts) {
+    if (!u) return null;
+    try {
+      var x = new URL(u, location.href);
+      if (x.protocol !== "https:") return null;
+      if (hosts && !hosts.some(function (h) { return x.hostname === h || x.hostname.endsWith("." + h); })) return null;
+      return x.href;
+    } catch (e) { return null; }
+  }
+  function el(tag, attrs, html) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+  var loaded = {};
+  function loadScript(src) {
+    if (loaded[src]) return; loaded[src] = true;
+    var s = document.createElement("script"); s.src = src; s.async = true; document.head.appendChild(s);
+  }
+  function wallets() {
+    return '<span class="wallets">' +
+      '<span class="wallet wallet--apple"> Pay</span>' +
+      '<span class="wallet wallet--gpay">G Pay</span>' +
+      '<span class="wallet wallet--card">VISA</span>' +
+      '<span class="wallet wallet--card">MC</span></span>';
+  }
+  function secureNote(provider) {
+    return el("p", { class: "cardpay__secure" },
+      '🔒 Secured by ' + provider + ' · your card details are entered on their PCI-compliant page and never touch this website.');
+  }
+  function renderCardMethod() {
+    var box = $("#cardMethod"); if (!box) return false;
+    box.innerHTML = "";
+
+    // (b) Donorbox embedded form
+    var dbox = safeUrl(pay.donorboxUrl, ["donorbox.org"]);
+    if (dbox) {
+      var wrap = el("div", { class: "cardpay__embed" });
+      wrap.appendChild(el("iframe", {
+        src: dbox, name: "donorbox", title: "Donate securely", allow: "payment",
+        allowpaymentrequest: "", frameborder: "0", scrolling: "no", height: "700", width: "100%"
+      }));
+      box.appendChild(wrap);
+      box.appendChild(secureNote("Donorbox"));
+      return true;
+    }
+    // (c) Stripe Buy Button (embedded)
+    if (pay.stripeBuyButtonId && pay.stripePublishableKey) {
+      loadScript("https://js.stripe.com/v3/buy-button.js");
+      var sb = el("stripe-buy-button");
+      sb.setAttribute("buy-button-id", pay.stripeBuyButtonId);
+      sb.setAttribute("publishable-key", pay.stripePublishableKey);
+      box.appendChild(el("p", { class: "cardpay__title" }, "Donate by card · Apple Pay · Google Pay"));
+      box.appendChild(sb);
+      box.appendChild(secureNote("Stripe"));
+      return true;
+    }
+    // (a) Stripe Payment Link / generic hosted checkout
+    var link = safeUrl(pay.stripePaymentLink, ["stripe.com"]) || safeUrl(pay.hostedDonateUrl, null);
+    if (link) {
+      box.appendChild(el("a", {
+        class: "btn btn--primary btn--lg btn--block cardpay__btn",
+        href: link, target: "_blank", rel: "noopener noreferrer"
+      }, wallets() + '<span>Donate by card · Apple&nbsp;Pay · Google&nbsp;Pay</span>'));
+      box.appendChild(secureNote("Stripe"));
+      return true;
+    }
+    // Nothing configured -> secure preview + reveal the working methods below
+    var prev = el("div", { class: "cardpay__preview" });
+    prev.appendChild(el("div", { class: "cardpay__head" }, wallets()));
+    prev.appendChild(el("p", { class: "cardpay__title" }, "Card · Apple Pay · Google Pay"));
+    prev.appendChild(el("p", { class: "cardpay__note" },
+      "Ready to switch on. Add a <strong>Stripe Payment Link</strong> or <strong>Donorbox</strong> campaign in the settings (about 5 minutes) and donors can pay by card or Apple&nbsp;Pay right here — they’ll enter their card and details on the processor’s secure page. Until then, the secure options below work now."));
+    box.appendChild(prev);
+    var gm = $("#giveMore"); if (gm) gm.open = true;
+    return false;
+  }
+
   /* ---------- Render currency selector ---------- */
   function renderCurrencies() {
     var sel = $("#currencySel");
@@ -298,6 +378,7 @@
   }
 
   function init() {
+    renderCardMethod();
     renderCurrencies();
     renderImpact();
     renderAmountButtons();

@@ -9,7 +9,7 @@
        This Content-Security-Policy is intentionally non-breaking (allows the
        site's own inlined script/style) while blocking framing, plugins,
        base-tag hijacking and unexpected third-party connections. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://www.paypal.com; frame-src https://www.paypal.com; upgrade-insecure-requests" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self'; connect-src 'self' https://api.stripe.com https://js.stripe.com https://donorbox.org; frame-src https://www.paypal.com https://js.stripe.com https://checkout.stripe.com https://donorbox.org https://*.donorbox.org; object-src 'none'; base-uri 'self'; form-action 'self' https://www.paypal.com; upgrade-insecure-requests" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="color-scheme" content="light" />
 
@@ -200,7 +200,38 @@ em{font-style:italic;color:var(--gold-500)}
 .card{background:var(--white);color:var(--ink);border-radius:var(--radius-lg);
   padding:clamp(1.4rem,3vw,2.2rem);box-shadow:var(--shadow-lg)}
 .card__head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;margin-bottom:1.1rem;flex-wrap:wrap}
-.card__title{font-size:1.5rem}
+.card__title{font-size:1.5rem;margin-bottom:1.1rem}
+
+/* Card / Apple Pay / Google Pay block */
+.cardpay{margin-bottom:1.1rem}
+.cardpay__btn{flex-direction:column;gap:.4rem;padding-block:1em}
+.cardpay__btn>span{font-size:1.02rem}
+.cardpay__embed{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff}
+.cardpay__embed iframe{display:block;width:100%;border:0}
+.cardpay__title{font-weight:700;text-align:center;margin:.2rem 0 .6rem;color:var(--green-800,#0b3d2e)}
+.cardpay__secure{font-size:.78rem;color:var(--ink-soft);text-align:center;margin:.6rem 0 0;line-height:1.4}
+.cardpay__preview{border:1.5px dashed var(--line);border-radius:16px;padding:1.2rem;text-align:center;background:var(--cream)}
+.cardpay__head{margin-bottom:.6rem}
+.cardpay__note{font-size:.86rem;color:var(--ink-soft);margin:.5rem 0 0}
+.wallets{display:inline-flex;gap:.4rem;flex-wrap:wrap;justify-content:center;align-items:center}
+.wallet{font-weight:800;font-size:.72rem;letter-spacing:.02em;padding:.32em .6em;border-radius:7px;line-height:1;
+  border:1px solid rgba(0,0,0,.1)}
+.wallet--apple{background:#000;color:#fff;border-color:#000}
+.wallet--gpay{background:#fff;color:#3c4043;box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.wallet--card{background:#1a1f71;color:#fff;border-color:#1a1f71}
+.btn .wallets .wallet{transform:translateY(-1px)}
+
+/* "Other ways to give" disclosure */
+.give-more{border-top:1px solid var(--line);margin-top:.4rem;padding-top:.4rem}
+.give-more__sum{display:flex;align-items:center;justify-content:space-between;gap:1rem;cursor:pointer;
+  list-style:none;padding:.7em 0;font-weight:700;color:var(--green-700)}
+.give-more__sum::-webkit-details-marker{display:none}
+.give-more__sum::after{content:"▾";color:var(--ink-soft);transition:transform .25s var(--ease)}
+.give-more[open] .give-more__sum::after{transform:rotate(180deg)}
+.give-more__tag{font-weight:600;font-size:.78rem;color:var(--ink-soft);letter-spacing:.02em}
+.give-more__body{padding-top:.6rem}
+.currency-sel--row{flex-direction:row;align-items:center;gap:.6rem;margin-bottom:1rem}
+.currency-sel--row .currency-sel__lbl{margin:0}
 .currency-sel{display:flex;flex-direction:column;gap:.25rem}
 .currency-sel__lbl{font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft)}
 .currency-sel select{font-family:inherit;font-weight:700;color:var(--green-700);background:var(--cream);
@@ -444,12 +475,22 @@ em{font-style:italic;color:var(--gold-500)}
 
       <!-- DONATION CARD -->
       <div class="card donate__card" id="donateCard">
-        <div class="card__head">
-          <h3 class="card__title">Choose your gift</h3>
-          <label class="currency-sel" for="currencySel">
-            <span class="currency-sel__lbl">Currency</span>
-            <select id="currencySel" aria-label="Choose currency">
-              <option value="INR">INR (₹)</option>
+        <h3 class="card__title">Make your donation</h3>
+
+        <!-- PRIMARY: Card · Apple Pay · Google Pay (hosted & PCI-secure; rendered by script) -->
+        <div id="cardMethod" class="cardpay" aria-live="polite"></div>
+
+        <!-- Other ways to give -->
+        <details class="give-more" id="giveMore">
+          <summary class="give-more__sum">
+            <span>Other ways to give</span>
+            <span class="give-more__tag">UPI · PayPal · Bank</span>
+          </summary>
+          <div class="give-more__body">
+            <label class="currency-sel currency-sel--row" for="currencySel">
+              <span class="currency-sel__lbl">Currency</span>
+              <select id="currencySel" aria-label="Choose currency">
+                <option value="INR">INR (₹)</option>
               <option value="USD">USD ($)</option>
               <option value="EUR">EUR (€)</option>
               <option value="GBP">GBP (£)</option>
@@ -457,51 +498,50 @@ em{font-style:italic;color:var(--gold-500)}
               <option value="CAD">CAD (C$)</option>
               <option value="SGD">SGD (S$)</option>
               <option value="AED">AED (AED)</option>
-            </select>
-          </label>
-        </div>
+              </select>
+            </label>
 
-        <div class="amount-grid" id="amountGrid" role="group" aria-label="Choose an amount">
-          <button class="amount-btn" type="button" data-tier="0" data-amount="200"><span class="amount-btn__amt">₹200</span><span class="amount-btn__lbl">A day of meals for an elder</span></button>
+            <div class="amount-grid" id="amountGrid" role="group" aria-label="Choose an amount">
+              <button class="amount-btn" type="button" data-tier="0" data-amount="200"><span class="amount-btn__amt">₹200</span><span class="amount-btn__lbl">A day of meals for an elder</span></button>
           <button class="amount-btn" type="button" data-tier="1" data-amount="500"><span class="amount-btn__amt">₹500</span><span class="amount-btn__lbl">Medicines for a week</span></button>
           <button class="amount-btn is-active" type="button" data-tier="2" data-amount="1000"><span class="amount-btn__amt">₹1,000</span><span class="amount-btn__lbl">A month of food & care</span></button>
           <button class="amount-btn" type="button" data-tier="3" data-amount="5000"><span class="amount-btn__amt">₹5,000</span><span class="amount-btn__lbl">Sponsor a birthday celebration</span></button>
-        </div>
+            </div>
 
-        <label class="custom-amount" for="customAmount">
-          <span>Or enter your own amount</span>
-          <div class="custom-amount__field">
-            <span class="rupee" id="curSymbol">₹</span>
-            <input id="customAmount" type="number" inputmode="decimal" min="1" step="any" placeholder="Amount" />
+            <label class="custom-amount" for="customAmount">
+              <span>Or enter your own amount</span>
+              <div class="custom-amount__field">
+                <span class="rupee" id="curSymbol">₹</span>
+                <input id="customAmount" type="number" inputmode="decimal" min="1" step="any" placeholder="Amount" />
+              </div>
+            </label>
+            <p class="amount-note" id="amountNote"></p>
+
+            <a id="payBtn" class="btn btn--primary btn--lg btn--block" href="#" role="button">Choose an amount</a>
+            <p class="hint hint--mobile" id="payHint">Opens Google&nbsp;Pay, PhonePe, Paytm or any UPI app on your phone.</p>
+            <p class="pay-reason" id="payReason" hidden></p>
+
+            <div class="qr-block" id="qrBlock">
+              <div class="qr-block__code" id="qrCode" aria-label="Payment QR code"></div>
+              <div class="qr-block__copy">
+                <p class="qr-block__lead" id="qrLead">On a laptop? <strong>Scan to pay</strong> with any UPI app.</p>
+                <button class="copy-row" id="copyUpi" type="button">
+                  <span class="copy-row__label">UPI ID</span>
+                  <span class="copy-row__value" id="upiIdText">8790815527@upi</span>
+                  <span class="copy-row__btn" aria-hidden="true">Copy</span>
+                </button>
+                <p class="copied" id="copiedMsg" hidden>Copied ✓</p>
+              </div>
+            </div>
+
+            <details class="bank" id="bankDetails" hidden>
+              <summary>Bank transfer (NEFT / IMPS / SWIFT)</summary>
+              <dl class="bank__list" id="bankList"></dl>
+            </details>
           </div>
-        </label>
-        <p class="amount-note" id="amountNote"></p>
-
-        <!-- Pay action (label + destination set by script per currency/method) -->
-        <a id="payBtn" class="btn btn--primary btn--lg btn--block" href="#" role="button">Choose an amount</a>
-        <p class="hint hint--mobile" id="payHint">Opens Google&nbsp;Pay, PhonePe, Paytm or any UPI app on your phone.</p>
-        <p class="pay-reason" id="payReason" hidden></p>
-
-        <div class="qr-block" id="qrBlock">
-          <div class="qr-block__code" id="qrCode" aria-label="Payment QR code"></div>
-          <div class="qr-block__copy">
-            <p class="qr-block__lead" id="qrLead">On a laptop? <strong>Scan to pay</strong> with any UPI app.</p>
-            <button class="copy-row" id="copyUpi" type="button">
-              <span class="copy-row__label">UPI ID</span>
-              <span class="copy-row__value" id="upiIdText">8790815527@upi</span>
-              <span class="copy-row__btn" aria-hidden="true">Copy</span>
-            </button>
-            <p class="copied" id="copiedMsg" hidden>Copied ✓</p>
-          </div>
-        </div>
-
-        <!-- Optional bank details -->
-        <details class="bank" id="bankDetails" hidden>
-          <summary>Bank transfer (NEFT / IMPS / SWIFT)</summary>
-          <dl class="bank__list" id="bankList"></dl>
         </details>
 
-        <p class="card__foot">100% reaches the home · no card details are stored on this site · a receipt can be issued on request. 🙏</p>
+        <p class="card__foot">100% reaches the home · we never see or store card details · receipt on request. 🙏</p>
       </div>
     </div>
   </section>
@@ -591,14 +631,19 @@ em{font-style:italic;color:var(--gold-500)}
 /* =====================================================================
    READY TO SERVE FOUNDATION  —  SITE CONFIGURATION
    ---------------------------------------------------------------------
-   This is the ONLY block you need to edit. Replace the placeholders to
-   make donations land directly with the charity, in ANY currency.
+   This is the ONLY block you need to edit. Fill in a payment provider to
+   accept CARD, APPLE PAY, GOOGLE PAY and donor details — securely.
 
-   HOW MONEY IS COLLECTED (no card data ever touches this website —
-   everything is handed off to PCI-compliant, HTTPS payment providers):
-     • INR  -> UPI  (instant, zero-fee, straight to their bank)
-     • Any currency -> PayPal  (paypal.me works in every currency)
-                     -> or any hosted donation page you paste below
+   ⓘ A website can never safely take raw card numbers itself (that would
+     break PCI-DSS). Instead, the card form + Apple Pay are served by a
+     trusted processor (Stripe / Donorbox). Pick ONE of the options below;
+     each is a free ~5-minute signup, then paste a value here:
+
+       • EASIEST card + Apple Pay  -> Stripe "Payment link"  (just a URL)
+       • Embedded card form        -> Donorbox campaign      (one URL)
+       • Embedded Stripe button    -> Stripe Buy Button       (2 values)
+       • INR, instant & zero-fee   -> UPI                     (a UPI ID)
+       • Any currency, no signup   -> PayPal                  (a handle)
    ===================================================================== */
 
 window.RTS_CONFIG = {
@@ -609,24 +654,37 @@ window.RTS_CONFIG = {
   location: "Vanasthalipuram, Hyderabad, Telangana, India",
   phone: "8790815527",
   email: "",
-  regNo: "",                              // optional Trust / 80G number
+  regNo: "",
 
   /* =================================================================
-     PAYMENT SETTINGS  — fill at least one of these in.
+     PAYMENT SETTINGS — fill in at least one. The donation card shows
+     CARD / APPLE PAY first whenever a card provider below is set.
      ================================================================= */
   payments: {
-    /* UPI — used automatically for INR (instant, zero fee, direct).
-       >>> Replace with the foundation's VERIFIED UPI ID. <<<            */
-    upiId: "8790815527@upi",              // e.g. name@okhdfcbank, 98765xxxxx@ybl
+
+    /* ---- CARD · APPLE PAY · GOOGLE PAY (donor enters their details) ----
+       Choose ANY one of these three. All collect card/Apple Pay/Google Pay,
+       name and email, and email a receipt — hosted & PCI-compliant.        */
+
+    // (a) Stripe Payment Link — simplest. Create one at dashboard.stripe.com
+    //     (Payment links → New). Turn on "Let customers choose amount" for
+    //     donations, and Apple/Google Pay are automatic. Paste the URL:
+    stripePaymentLink: "",        // e.g. "https://donate.stripe.com/xxxxxxxx"
+
+    // (b) Donorbox — embedded donation form (also does recurring).
+    //     Make a campaign, then copy its embed URL:
+    donorboxUrl: "",              // e.g. "https://donorbox.org/embed/your-campaign"
+
+    // (c) Stripe Buy Button — embedded button. From Stripe → Buy button:
+    stripeBuyButtonId: "",        // e.g. "buy_btn_xxx"
+    stripePublishableKey: "",     // e.g. "pk_live_xxx"
+
+    /* ---- UPI (INR only — instant, zero fee, straight to their bank) ---- */
+    upiId: "8790815527@upi",      // <-- REPLACE with the VERIFIED UPI ID
     upiPayeeName: "Ready To Serve Foundation",
 
-    /* PayPal — enables donations in ANY currency. Just the handle, no
-       https:// — e.g. for paypal.me/ReadyToServe put "ReadyToServe".    */
-    paypalHandle: "",                     // <-- add to enable global card/PayPal giving
-
-    /* OR a hosted donation page (Stripe Payment Link, Razorpay Page,
-       Donorbox, GoFundMe, etc.). If set, non-UPI currencies open this.  */
-    hostedDonateUrl: ""                   // e.g. "https://donate.stripe.com/xxxx"
+    /* ---- PayPal (works in any currency, no signup keys needed) ---- */
+    paypalHandle: ""              // e.g. "ReadyToServe"  (from paypal.me/ReadyToServe)
   },
 
   /* ---- Bank transfer (optional fallback) ---- */
@@ -634,16 +692,14 @@ window.RTS_CONFIG = {
     accountName: "", accountNumber: "", ifsc: "", bankName: "", branch: "", swift: ""
   },
 
-  /* ---- Currencies & suggested amounts ----
-     The first entry is the default. Each tier label is shared across
-     currencies; amounts are tuned per currency.                         */
+  /* ---- Currencies & suggested amounts (used by the UPI / PayPal quick-give) ---- */
   tierLabels: [
     "A day of meals for an elder",
     "Medicines for a week",
     "A month of food & care",
     "Sponsor a birthday celebration"
   ],
-  defaultTier: 2,                          // which tier is pre-selected (0-3)
+  defaultTier: 2,
   currencies: [
     { code: "INR", symbol: "₹",  locale: "en-IN", amounts: [200, 500, 1000, 5000] },
     { code: "USD", symbol: "$",  locale: "en-US", amounts: [5, 15, 30, 100] },
@@ -764,6 +820,86 @@ window.RTS_CONFIG = {
     if (amount && amount > 0) p.set("am", String(amount));
     p.set("tn", "Donation to " + (cfg.orgName || "charity"));
     return "upi://pay?" + p.toString();
+  }
+
+  /* ---------- Card / Apple Pay / Google Pay (hosted, PCI-secure) ---------- */
+  function safeUrl(u, hosts) {
+    if (!u) return null;
+    try {
+      var x = new URL(u, location.href);
+      if (x.protocol !== "https:") return null;
+      if (hosts && !hosts.some(function (h) { return x.hostname === h || x.hostname.endsWith("." + h); })) return null;
+      return x.href;
+    } catch (e) { return null; }
+  }
+  function el(tag, attrs, html) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+  var loaded = {};
+  function loadScript(src) {
+    if (loaded[src]) return; loaded[src] = true;
+    var s = document.createElement("script"); s.src = src; s.async = true; document.head.appendChild(s);
+  }
+  function wallets() {
+    return '<span class="wallets">' +
+      '<span class="wallet wallet--apple"> Pay</span>' +
+      '<span class="wallet wallet--gpay">G Pay</span>' +
+      '<span class="wallet wallet--card">VISA</span>' +
+      '<span class="wallet wallet--card">MC</span></span>';
+  }
+  function secureNote(provider) {
+    return el("p", { class: "cardpay__secure" },
+      '🔒 Secured by ' + provider + ' · your card details are entered on their PCI-compliant page and never touch this website.');
+  }
+  function renderCardMethod() {
+    var box = $("#cardMethod"); if (!box) return false;
+    box.innerHTML = "";
+
+    // (b) Donorbox embedded form
+    var dbox = safeUrl(pay.donorboxUrl, ["donorbox.org"]);
+    if (dbox) {
+      var wrap = el("div", { class: "cardpay__embed" });
+      wrap.appendChild(el("iframe", {
+        src: dbox, name: "donorbox", title: "Donate securely", allow: "payment",
+        allowpaymentrequest: "", frameborder: "0", scrolling: "no", height: "700", width: "100%"
+      }));
+      box.appendChild(wrap);
+      box.appendChild(secureNote("Donorbox"));
+      return true;
+    }
+    // (c) Stripe Buy Button (embedded)
+    if (pay.stripeBuyButtonId && pay.stripePublishableKey) {
+      loadScript("https://js.stripe.com/v3/buy-button.js");
+      var sb = el("stripe-buy-button");
+      sb.setAttribute("buy-button-id", pay.stripeBuyButtonId);
+      sb.setAttribute("publishable-key", pay.stripePublishableKey);
+      box.appendChild(el("p", { class: "cardpay__title" }, "Donate by card · Apple Pay · Google Pay"));
+      box.appendChild(sb);
+      box.appendChild(secureNote("Stripe"));
+      return true;
+    }
+    // (a) Stripe Payment Link / generic hosted checkout
+    var link = safeUrl(pay.stripePaymentLink, ["stripe.com"]) || safeUrl(pay.hostedDonateUrl, null);
+    if (link) {
+      box.appendChild(el("a", {
+        class: "btn btn--primary btn--lg btn--block cardpay__btn",
+        href: link, target: "_blank", rel: "noopener noreferrer"
+      }, wallets() + '<span>Donate by card · Apple&nbsp;Pay · Google&nbsp;Pay</span>'));
+      box.appendChild(secureNote("Stripe"));
+      return true;
+    }
+    // Nothing configured -> secure preview + reveal the working methods below
+    var prev = el("div", { class: "cardpay__preview" });
+    prev.appendChild(el("div", { class: "cardpay__head" }, wallets()));
+    prev.appendChild(el("p", { class: "cardpay__title" }, "Card · Apple Pay · Google Pay"));
+    prev.appendChild(el("p", { class: "cardpay__note" },
+      "Ready to switch on. Add a <strong>Stripe Payment Link</strong> or <strong>Donorbox</strong> campaign in the settings (about 5 minutes) and donors can pay by card or Apple&nbsp;Pay right here — they’ll enter their card and details on the processor’s secure page. Until then, the secure options below work now."));
+    box.appendChild(prev);
+    var gm = $("#giveMore"); if (gm) gm.open = true;
+    return false;
   }
 
   /* ---------- Render currency selector ---------- */
@@ -963,6 +1099,7 @@ window.RTS_CONFIG = {
   }
 
   function init() {
+    renderCardMethod();
     renderCurrencies();
     renderImpact();
     renderAmountButtons();
