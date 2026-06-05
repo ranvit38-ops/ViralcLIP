@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Private page: keep it out of search engines -->
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://donorbox.org https://api.stripe.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" />
+  <title>Owner Dashboard — Ready To Serve Foundation</title>
+  <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root{--green-900:#0b3d2e;--green-700:#0f5132;--green-500:#1b9e5f;--gold:#e0a93b;--cream:#fbf7ef;--ink:#22281f;--ink-soft:#55604f;--line:rgba(11,61,46,.14);--radius:16px;--shadow:0 18px 50px -24px rgba(11,61,46,.5);--font-head:"Fraunces",Georgia,serif;--font-body:"Plus Jakarta Sans",system-ui,sans-serif}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--font-body);background:var(--cream);color:var(--ink);line-height:1.55}
+    h1,h2,h3{font-family:var(--font-head);font-weight:700;margin:0;letter-spacing:-.01em}
+    a{color:var(--green-700)}
+    .wrap{max-width:1040px;margin-inline:auto;padding:clamp(18px,4vw,34px)}
+    .top{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.4rem}
+    .brand{display:flex;align-items:center;gap:.6rem;font-family:var(--font-head);font-weight:700;font-size:1.15rem;color:var(--green-900)}
+    .brand__mark{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,var(--green-500),var(--gold));color:#fff}
+    .pill{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:.4em .8em;border-radius:100px;background:rgba(27,158,95,.12);color:var(--green-700)}
+    .pill--demo{background:rgba(224,169,59,.22);color:#8a5a00}
+    .btn{font-family:inherit;font-weight:700;border:0;border-radius:100px;padding:.7em 1.3em;cursor:pointer;background:linear-gradient(135deg,var(--green-500),var(--green-700));color:#fff;transition:transform .2s,box-shadow .2s;box-shadow:0 6px 18px -8px rgba(11,61,46,.5)}
+    .btn:hover{transform:translateY(-1px)}
+    .btn--ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line);box-shadow:none}
+    .btn--sm{padding:.5em 1em;font-size:.88rem}
+    .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:1.4rem;box-shadow:0 2px 10px rgba(11,61,46,.06)}
+    /* login */
+    .gate{max-width:440px;margin:6vh auto 0}
+    .gate .card{box-shadow:var(--shadow)}
+    .gate h2{font-size:1.5rem;margin-bottom:.3rem}
+    .gate p{color:var(--ink-soft);margin:.2rem 0 1.2rem;font-size:.95rem}
+    label{display:block;font-weight:700;font-size:.8rem;color:var(--ink-soft);margin:.9rem 0 .3rem}
+    input{width:100%;font-family:inherit;font-size:1rem;padding:.7em .9em;border:1.5px solid var(--line);border-radius:12px;outline:0}
+    input:focus{border-color:var(--green-500);box-shadow:0 0 0 3px rgba(27,158,95,.16)}
+    .gate .btn{width:100%;margin-top:1.2rem}
+    .muted{color:var(--ink-soft);font-size:.85rem}
+    .err{color:#b42318;font-weight:600;font-size:.9rem;margin-top:.8rem;min-height:1.1rem}
+    .linkbtn{background:none;border:0;color:var(--green-700);font-weight:700;cursor:pointer;font-family:inherit;padding:0;text-decoration:underline;text-underline-offset:3px}
+    /* dashboard */
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.2rem}
+    .stat__label{font-size:.78rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft)}
+    .stat__value{font-family:var(--font-head);font-weight:700;font-size:1.9rem;color:var(--green-700);margin-top:.3rem;line-height:1.1}
+    .stat__sub{font-size:.82rem;color:var(--ink-soft);margin-top:.2rem}
+    .section-title{font-size:1.15rem;margin:1.6rem 0 .8rem}
+    table{width:100%;border-collapse:collapse;font-size:.92rem}
+    th,td{text-align:left;padding:.7em .6em;border-bottom:1px solid var(--line)}
+    th{font-size:.74rem;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft)}
+    td.amt{font-weight:700;color:var(--green-700);white-space:nowrap}
+    .tag{font-size:.7rem;font-weight:700;padding:.2em .6em;border-radius:6px;background:var(--cream);border:1px solid var(--line)}
+    .totals-row{display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem}
+    .totals-row .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:.6em 1em;font-weight:700}
+    .note{font-size:.85rem;color:var(--ink-soft);margin-top:1.2rem}
+    .row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+    .hide{display:none}
+    @media (max-width:760px){.grid{grid-template-columns:1fr 1fr}}
+    @media (max-width:440px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+        </span>
+        Owner Dashboard
+      </div>
+      <div class="row" id="topRight" hidden>
+        <span class="pill" id="modePill">Live</span>
+        <button class="btn btn--ghost btn--sm" id="refreshBtn" type="button">↻ Refresh</button>
+        <button class="btn btn--ghost btn--sm" id="logoutBtn" type="button">Sign out</button>
+      </div>
+    </div>
+
+    <!-- LOGIN GATE -->
+    <section class="gate" id="gate">
+      <div class="card">
+        <h2>Private access</h2>
+        <p>Enter your secret dashboard token to view live donation totals. Only you have this token — it’s checked on the server, never stored in the website’s code.</p>
+        <label for="endpoint">Stats endpoint</label>
+        <input id="endpoint" type="text" autocomplete="off" spellcheck="false" placeholder="/.netlify/functions/stats" />
+        <label for="token">Dashboard token</label>
+        <input id="token" type="password" autocomplete="off" placeholder="Your ADMIN_TOKEN" />
+        <button class="btn" id="loginBtn" type="button">View dashboard →</button>
+        <p class="err" id="loginErr"></p>
+        <p class="muted">No backend set up yet? <button class="linkbtn" id="demoBtn" type="button">See a demo with sample numbers</button></p>
+      </div>
+    </section>
+
+    <!-- DASHBOARD -->
+    <section id="dash" hidden>
+      <div class="grid">
+        <div class="card"><div class="stat__label">Total raised</div><div class="stat__value" id="sTotal">—</div><div class="stat__sub" id="sTotalSub"></div></div>
+        <div class="card"><div class="stat__label">Donations</div><div class="stat__value" id="sCount">—</div><div class="stat__sub" id="sCountSub"></div></div>
+        <div class="card"><div class="stat__label">Average gift</div><div class="stat__value" id="sAvg">—</div></div>
+        <div class="card"><div class="stat__label">This month</div><div class="stat__value" id="sMonth">—</div><div class="stat__sub" id="sMonthSub"></div></div>
+      </div>
+
+      <div id="totalsByCur" class="totals-row"></div>
+
+      <h3 class="section-title">Recent donations</h3>
+      <div class="card" style="padding:.4rem .6rem;overflow:auto">
+        <table>
+          <thead><tr><th>When</th><th>Donor</th><th>Method</th><th style="text-align:right">Amount</th></tr></thead>
+          <tbody id="recent"><tr><td colspan="4" class="muted" style="padding:1rem">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <p class="note" id="footNote"></p>
+      <p class="note">
+        Visitor counts (“how many people on the site”) live in your analytics dashboard
+        (Google Analytics / Plausible / Cloudflare). Card &amp; Apple Pay payment records,
+        receipts and refunds are always in your <strong>Stripe</strong> / <strong>Donorbox</strong>
+        dashboard — this page summarises them.
+      </p>
+    </section>
+  </div>
+
+  <script src="assets/js/config.js"></script>
+  <script>
+  (function(){
+    "use strict";
+    var $=function(s){return document.querySelector(s);};
+    var DEMO_ENDPOINT="__demo__";
+    var defaultEndpoint=(window.RTS_CONFIG&&window.RTS_CONFIG.admin&&window.RTS_CONFIG.admin.statsEndpoint)||"/.netlify/functions/stats";
+    $("#endpoint").value=defaultEndpoint;
+
+    function fmtMoney(amount,cur){
+      try{return new Intl.NumberFormat(undefined,{style:"currency",currency:(cur||"USD").toUpperCase(),maximumFractionDigits:2}).format(amount);}catch(e){return (cur||"")+" "+(Math.round(amount*100)/100);}
+    }
+    function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c];});}
+    function when(ts){var d=new Date(ts*1000||ts);return isNaN(d)?"—":d.toLocaleDateString(undefined,{month:"short",day:"numeric"})+" "+d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});}
+
+    function demoData(){
+      var now=Math.floor(Date.now()/1000),day=86400;
+      var donors=[["Ananya R.","gpay"],["M. Rahman","card"],["Priya S.","upi"],["John D.","applepay"],["Wei L.","card"],["Sara K.","paypal"],["Anonymous","card"],["Ravi T.","upi"]];
+      var recent=[],amts=[1000,30,500,25,75,15,2000,200];
+      for(var i=0;i<8;i++)recent.push({created:now-i*day*1.3,amount:amts[i],currency:i%3===0?"inr":(i%3===1?"usd":"usd"),name:donors[i][0],method:donors[i][1],status:"succeeded"});
+      return {demo:true,count:142,totalsByCurrency:[{currency:"inr",amount:184500,count:96},{currency:"usd",amount:2630,count:46}],
+        primaryCurrency:"usd",totalApproxUsd:4845,monthCount:23,monthApproxUsd:1180,recent:recent,generatedAt:new Date().toISOString()};
+    }
+
+    function render(data,isDemo){
+      $("#gate").hidden=true;$("#dash").hidden=false;$("#topRight").hidden=false;
+      var pill=$("#modePill");pill.textContent=isDemo?"Demo data":"Live";pill.className="pill"+(isDemo?" pill--demo":"");
+
+      var totals=data.totalsByCurrency||[];
+      // headline total
+      if(data.totalApproxUsd!=null && totals.length>1){
+        $("#sTotal").textContent="≈ "+fmtMoney(data.totalApproxUsd,"usd");
+        $("#sTotalSub").textContent="across "+totals.length+" currencies";
+      }else if(totals[0]){
+        $("#sTotal").textContent=fmtMoney(totals[0].amount,totals[0].currency);
+        $("#sTotalSub").textContent="";
+      }else{$("#sTotal").textContent=fmtMoney(0,"usd");}
+
+      $("#sCount").textContent=(data.count||0).toLocaleString();
+      $("#sCountSub").textContent="successful payments";
+      // average from primary currency bucket
+      var primary=totals.filter(function(t){return t.currency===(data.primaryCurrency||"");})[0]||totals[0];
+      $("#sAvg").textContent=primary&&primary.count?fmtMoney(primary.amount/primary.count,primary.currency):"—";
+      $("#sMonth").textContent=data.monthApproxUsd!=null?"≈ "+fmtMoney(data.monthApproxUsd,"usd"):(data.monthCount!=null?data.monthCount:"—");
+      $("#sMonthSub").textContent=data.monthCount!=null?data.monthCount+" gifts this month":"";
+
+      // per-currency chips
+      $("#totalsByCur").innerHTML=totals.map(function(t){return '<span class="chip">'+fmtMoney(t.amount,t.currency)+' · '+t.count+' gifts</span>';}).join("");
+
+      // recent table
+      var rows=(data.recent||[]).map(function(r){
+        var m=({card:"Card",applepay:"Apple Pay",gpay:"Google Pay",upi:"UPI",paypal:"PayPal"})[r.method]||esc(r.method||"—");
+        return '<tr><td>'+when(r.created)+'</td><td>'+esc(r.name||"Donor")+'</td><td><span class="tag">'+m+'</span></td><td class="amt" style="text-align:right">'+fmtMoney(r.amount,r.currency)+'</td></tr>';
+      }).join("");
+      $("#recent").innerHTML=rows||'<tr><td colspan="4" class="muted" style="padding:1rem">No donations yet.</td></tr>';
+
+      $("#footNote").textContent="Last updated "+new Date(data.generatedAt||Date.now()).toLocaleString()+(isDemo?" · This is sample data to preview the layout.":"");
+    }
+
+    function showErr(msg){$("#loginErr").textContent=msg;}
+
+    function load(endpoint,token){
+      if(endpoint===DEMO_ENDPOINT){render(demoData(),true);return;}
+      showErr("");
+      $("#loginBtn").textContent="Loading…";
+      fetch(endpoint,{headers:{"x-admin-token":token,"accept":"application/json"},cache:"no-store"})
+        .then(function(r){
+          if(r.status===401||r.status===403)throw new Error("That token was not accepted.");
+          if(!r.ok)throw new Error("Could not reach the stats endpoint ("+r.status+"). Is the serverless function deployed?");
+          return r.json();
+        })
+        .then(function(data){
+          try{sessionStorage.setItem("rts_admin_token",token);sessionStorage.setItem("rts_admin_endpoint",endpoint);}catch(e){}
+          render(data,!!data.demo);
+        })
+        .catch(function(e){showErr(e.message||"Something went wrong.");})
+        .then(function(){$("#loginBtn").textContent="View dashboard →";});
+    }
+
+    $("#loginBtn").addEventListener("click",function(){
+      var ep=$("#endpoint").value.trim()||defaultEndpoint;
+      var tk=$("#token").value.trim();
+      if(!tk){showErr("Enter your dashboard token.");return;}
+      load(ep,tk);
+    });
+    $("#token").addEventListener("keydown",function(e){if(e.key==="Enter")$("#loginBtn").click();});
+    $("#demoBtn").addEventListener("click",function(){load(DEMO_ENDPOINT,"");});
+    $("#refreshBtn").addEventListener("click",function(){
+      var ep=sessionStorage.getItem("rts_admin_endpoint"),tk=sessionStorage.getItem("rts_admin_token");
+      if(ep&&tk)load(ep,tk);else load(DEMO_ENDPOINT,"");
+    });
+    $("#logoutBtn").addEventListener("click",function(){
+      try{sessionStorage.removeItem("rts_admin_token");sessionStorage.removeItem("rts_admin_endpoint");}catch(e){}
+      $("#dash").hidden=true;$("#topRight").hidden=true;$("#gate").hidden=false;$("#token").value="";
+    });
+
+    // auto-resume session, or open demo if ?demo=1
+    if(/[?&]demo=1\b/.test(location.search)){load(DEMO_ENDPOINT,"");}
+    else{
+      var ep=sessionStorage.getItem("rts_admin_endpoint"),tk=sessionStorage.getItem("rts_admin_token");
+      if(ep&&tk)load(ep,tk);
+    }
+  })();
+  </script>
+</body>
+</html>

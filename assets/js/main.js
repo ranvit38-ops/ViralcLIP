@@ -377,7 +377,37 @@
     vids.forEach(function (v) { v.addEventListener("play", function () { vids.forEach(function (o) { if (o !== v && !o.paused) o.pause(); }); }); });
   }
 
+  /* ---------- Privacy-friendly analytics (visitor counts) ----------
+     Loads only what you configure; you read the numbers in that tool's
+     own private, login-protected dashboard. */
+  function loadAnalytics() {
+    var a = cfg.analytics || {};
+    // Google Analytics 4
+    if (/^G-[A-Z0-9]+$/i.test(a.googleAnalyticsId || "")) {
+      loadScript("https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(a.googleAnalyticsId));
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function () { window.dataLayer.push(arguments); };
+      window.gtag("js", new Date());
+      window.gtag("config", a.googleAnalyticsId, { anonymize_ip: true });
+    }
+    // Plausible
+    if (a.plausibleDomain) {
+      var p = document.createElement("script");
+      p.defer = true; p.setAttribute("data-domain", a.plausibleDomain);
+      p.src = "https://plausible.io/js/script.js";
+      document.head.appendChild(p);
+    }
+    // Cloudflare Web Analytics
+    if (a.cloudflareToken) {
+      var c = document.createElement("script");
+      c.defer = true; c.src = "https://static.cloudflareinsights.com/beacon.min.js";
+      c.setAttribute("data-cf-beacon", JSON.stringify({ token: a.cloudflareToken }));
+      document.head.appendChild(c);
+    }
+  }
+
   function init() {
+    loadAnalytics();
     renderCardMethod();
     renderCurrencies();
     renderImpact();

@@ -9,7 +9,7 @@
        This Content-Security-Policy is intentionally non-breaking (allows the
        site's own inlined script/style) while blocking framing, plugins,
        base-tag hijacking and unexpected third-party connections. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self'; connect-src 'self' https://api.stripe.com https://js.stripe.com https://donorbox.org; frame-src https://www.paypal.com https://js.stripe.com https://checkout.stripe.com https://donorbox.org https://*.donorbox.org; object-src 'none'; base-uri 'self'; form-action 'self' https://www.paypal.com; upgrade-insecure-requests" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com https://www.googletagmanager.com https://plausible.io https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self'; connect-src 'self' https://api.stripe.com https://js.stripe.com https://donorbox.org https://www.google-analytics.com https://plausible.io https://cloudflareinsights.com; frame-src https://www.paypal.com https://js.stripe.com https://checkout.stripe.com https://donorbox.org https://*.donorbox.org; object-src 'none'; base-uri 'self'; form-action 'self' https://www.paypal.com; upgrade-insecure-requests" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="color-scheme" content="light" />
 
@@ -711,8 +711,31 @@ window.RTS_CONFIG = {
     { code: "AED", symbol: "AED",locale: "en-AE", amounts: [20, 50, 100, 300] }
   ],
 
+  /* =================================================================
+     TRACKING & PRIVATE OWNER DASHBOARD
+     ----------------------------------------------------------------
+     "How many people on the site" -> add ONE analytics tool below.
+       You view the numbers in that tool's own login-protected dashboard
+       (only you can see it). All are free and privacy-friendly.
+     "How many paid / amounts / totals" -> your payment processor's
+       dashboard already shows this privately (Stripe / Donorbox), and
+       the on-site /admin.html page can show live totals via a serverless
+       function (see README → "Private owner dashboard").
+     ================================================================= */
+  analytics: {
+    googleAnalyticsId: "",   // "G-XXXXXXXXXX"  (analytics.google.com)
+    plausibleDomain: "",     // "yourdomain.org" (plausible.io — no cookie banner needed)
+    cloudflareToken: ""      // Cloudflare Web Analytics token (cloudflare.com)
+  },
+  admin: {
+    // Where admin.html fetches live donation totals from (your serverless
+    // function). Leave as-is for Netlify; admin.html also has a demo mode.
+    statsEndpoint: "/.netlify/functions/stats"
+  },
+
   instagramReel: "https://www.instagram.com/reel/DX4B9sgsQLS/"
 };
+
 
   </script>
   <!-- QR engine (inlined so the QR works offline / anywhere) -->
@@ -1098,7 +1121,37 @@ window.RTS_CONFIG = {
     vids.forEach(function (v) { v.addEventListener("play", function () { vids.forEach(function (o) { if (o !== v && !o.paused) o.pause(); }); }); });
   }
 
+  /* ---------- Privacy-friendly analytics (visitor counts) ----------
+     Loads only what you configure; you read the numbers in that tool's
+     own private, login-protected dashboard. */
+  function loadAnalytics() {
+    var a = cfg.analytics || {};
+    // Google Analytics 4
+    if (/^G-[A-Z0-9]+$/i.test(a.googleAnalyticsId || "")) {
+      loadScript("https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(a.googleAnalyticsId));
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function () { window.dataLayer.push(arguments); };
+      window.gtag("js", new Date());
+      window.gtag("config", a.googleAnalyticsId, { anonymize_ip: true });
+    }
+    // Plausible
+    if (a.plausibleDomain) {
+      var p = document.createElement("script");
+      p.defer = true; p.setAttribute("data-domain", a.plausibleDomain);
+      p.src = "https://plausible.io/js/script.js";
+      document.head.appendChild(p);
+    }
+    // Cloudflare Web Analytics
+    if (a.cloudflareToken) {
+      var c = document.createElement("script");
+      c.defer = true; c.src = "https://static.cloudflareinsights.com/beacon.min.js";
+      c.setAttribute("data-cf-beacon", JSON.stringify({ token: a.cloudflareToken }));
+      document.head.appendChild(c);
+    }
+  }
+
   function init() {
+    loadAnalytics();
     renderCardMethod();
     renderCurrencies();
     renderImpact();

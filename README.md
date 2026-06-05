@@ -80,6 +80,53 @@ Google Pay appear automatically for eligible devices.
 - External links use `rel="noopener noreferrer"`. No trackers, no data collection.
 - Host it over **HTTPS** (Netlify/Pages/Vercel/Cloudflare all give free HTTPS).
 
+## 📊 Tracking & a private owner-only dashboard
+
+Everything here is private to **you** — none of it is visible to visitors.
+
+### 1) How many people are on the site (visitors)
+Add **one** analytics tool in the EDIT block (`analytics:` in `index.html`), then
+read the numbers in that tool's own **login-protected** dashboard:
+
+```js
+analytics: {
+  googleAnalyticsId: "",   // "G-XXXXXXXXXX"  (analytics.google.com — live users, totals)
+  plausibleDomain: "",     // "yourdomain.org" (plausible.io — simple, privacy-first)
+  cloudflareToken: ""      // Cloudflare Web Analytics (free, no cookie banner)
+}
+```
+
+All are free. Google Analytics even shows **live "users on site right now."**
+
+### 2) How many paid · what they paid · totals
+Your **payment processor's dashboard is the official private record** and already
+shows every payment, amount, donor, receipt and refund:
+- **Stripe** → dashboard.stripe.com  • **Donorbox** → app.donorbox.org  • **PayPal** → paypal.com
+
+### 3) An on-site private dashboard (`/admin.html`)
+The site includes an owner dashboard at **`admin.html`** showing **total raised,
+number of donations, average gift, this month, and recent gifts**.
+
+- Open `admin.html?demo=1` (or click **“See a demo”**) to preview it now with
+  sample numbers.
+- For **live** numbers, deploy the included serverless function and set two
+  secrets on your host (so they stay on the **server**, never in the website):
+
+  **Netlify** → Site settings → Environment variables:
+  ```
+  STRIPE_SECRET_KEY = sk_live_xxx     (from your Stripe dashboard)
+  ADMIN_TOKEN       = <a long random secret you invent>   ← this is your dashboard password
+  ```
+  The function `netlify/functions/stats.js` reads Stripe **server-side**; the
+  dashboard asks for your `ADMIN_TOKEN` and the server verifies it before
+  returning any data. Anyone without the token gets **401 Unauthorized**.
+
+> 🔒 Why it's done this way: a website's own code is downloadable by anyone, so a
+> password hidden in JavaScript is **not** secure. Real protection means the secret
+> key + token live on the server (the function) — which is exactly this setup. For
+> extra safety you can also enable Netlify's built-in password protection / Identity
+> on `/admin.html`.
+
 ## 🚀 Going live (free, ~1 minute, gives a link that works on phones)
 
 Easiest: drag this folder onto **https://app.netlify.com/drop** — you instantly

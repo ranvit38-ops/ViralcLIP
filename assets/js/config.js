@@ -81,5 +81,28 @@ window.RTS_CONFIG = {
     { code: "AED", symbol: "AED",locale: "en-AE", amounts: [20, 50, 100, 300] }
   ],
 
+  /* =================================================================
+     TRACKING & PRIVATE OWNER DASHBOARD
+     ----------------------------------------------------------------
+     "How many people on the site" -> add ONE analytics tool below.
+       You view the numbers in that tool's own login-protected dashboard
+       (only you can see it). All are free and privacy-friendly.
+     "How many paid / amounts / totals" -> your payment processor's
+       dashboard already shows this privately (Stripe / Donorbox), and
+       the on-site /admin.html page can show live totals via a serverless
+       function (see README → "Private owner dashboard").
+     ================================================================= */
+  analytics: {
+    googleAnalyticsId: "",   // "G-XXXXXXXXXX"  (analytics.google.com)
+    plausibleDomain: "",     // "yourdomain.org" (plausible.io — no cookie banner needed)
+    cloudflareToken: ""      // Cloudflare Web Analytics token (cloudflare.com)
+  },
+  admin: {
+    // Where admin.html fetches live donation totals from (your serverless
+    // function). Leave as-is for Netlify; admin.html also has a demo mode.
+    statsEndpoint: "/.netlify/functions/stats"
+  },
+
   instagramReel: "https://www.instagram.com/reel/DX4B9sgsQLS/"
 };
+
