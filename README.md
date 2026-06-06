@@ -1,8 +1,9 @@
 # Ready To Serve Foundation — Donation Website
 
 A warm, mobile-first website for the **Ready To Serve Foundation**, a free old age
-home in Vanasthalipuram, Hyderabad. Anyone — on a phone or a laptop — can send
-money **directly** to the foundation by UPI in about 30 seconds.
+home in Vanasthalipuram, Hyderabad. Anyone in the world — on a phone or a laptop —
+can donate by **card, Apple Pay, Google Pay** (one-time or monthly) in about
+30 seconds, through an embedded **Donorbox** form.
 
 ## ✅ How to open / test it
 
@@ -14,58 +15,40 @@ the videos play; everything else works even on its own.)
 
 To put it online so you can open it on your **phone**, see _Going live_ below.
 
-## 💳 Donations — card, Apple Pay, Google Pay, any currency — securely
+## 💳 Donations — card, Apple Pay, Google Pay, any currency
 
-The donation card shows **Card · Apple Pay · Google Pay** first (where donors
-enter their details), with **UPI / PayPal / bank** underneath. **No card data is
-ever entered or stored on this website** — the card form and Apple Pay button are
-served by a trusted, PCI-compliant processor. You just paste one value to switch
-it on.
+The donation section embeds a **Donorbox** form where donors enter their details
+and pay by **card, Apple Pay, Google Pay** (one-time or monthly), in 40+
+currencies, from anywhere in the world. **No card data is ever entered or stored
+on this website** — the form is served by Donorbox (PCI-compliant) inside a secure
+iframe.
 
-### To accept card + Apple Pay + Google Pay (pick ONE, ~5-min free signup)
-
-In the **EDIT block** near the bottom of `index.html`, set one of:
+It's already wired to the campaign:
 
 ```js
 payments: {
-  // (a) EASIEST — Stripe Payment Link (just a URL). Card, Apple Pay,
-  //     Google Pay, name/email + receipt, all on Stripe's secure page.
-  stripePaymentLink: "",        // "https://donate.stripe.com/xxxx"
-
-  // (b) Donorbox — an embedded donation form (also does recurring):
-  donorboxUrl: "",              // "https://donorbox.org/embed/your-campaign"
-
-  // (c) Stripe Buy Button — embedded button (2 values):
-  stripeBuyButtonId: "",        // "buy_btn_xxx"
-  stripePublishableKey: "",     // "pk_live_xxx"
+  donorboxUrl: "https://donorbox.org/ready-to-serve-foundation",  // campaign or /embed/ URL
   ...
 }
 ```
 
-**Stripe Payment Link is the quickest:** dashboard.stripe.com → *Payment links* →
-*New* → turn on *“Let customers choose what to pay”* → copy the URL. Apple Pay &
-Google Pay appear automatically for eligible devices.
+### ⚠️ The one step left to actually receive money
+In the **Donorbox dashboard** (app.donorbox.org), the campaign must have a
+**payout method connected** — Donorbox walks you through connecting **Stripe**
+(quick express setup) or **PayPal**. That's where the foundation's bank details
+go, so donations have somewhere to land. Do a small test donation once connected.
 
-### Also available (no signup needed)
-
-```js
-  upiId: "8790815527@upi",   // INR — instant, zero-fee, direct (REPLACE w/ verified ID)
-  paypalHandle: "",          // "ReadyToServe" -> donations in any currency via PayPal
-```
-
-- **UPI** handles ₹ instantly with zero fees. **PayPal** covers any currency.
-- The currency list + suggested amounts are just below, editable.
-- **Bank transfer** (incl. international **SWIFT**) — fill `bank.accountNumber` +
-  `bank.ifsc`/`swift` → a transfer panel appears automatically.
-
-> ⚠️ Until a provider is set, the card area shows a tidy "ready to switch on"
-> preview (never a broken or fake form), and UPI/PayPal remain usable.
+### Other options (optional)
+The same `payments` block also supports a **Stripe Payment Link**
+(`stripePaymentLink`), a **Stripe Buy Button**, or **PayPal** (`paypalHandle`) —
+paste any one and it takes over automatically. If none is set, the donation area
+shows a tidy "ready to switch on" preview (never a broken or fake form).
 
 ### Security
-- The card form / Apple Pay live inside the **processor's** secure page or iframe
-  (Stripe, Donorbox) — this site never sees raw card numbers (PCI-DSS safe).
-- Only the trusted processor domains are allow-listed in the CSP; any other or
-  non-HTTPS payment URL you paste is **rejected** and falls back to the preview.
+- The donation form lives inside **Donorbox's** secure iframe — this site never
+  sees raw card numbers (PCI-DSS safe).
+- Only trusted processor domains (Donorbox/Stripe/PayPal) are allow-listed in the
+  CSP; any other or non-HTTPS payment URL is **rejected**.
 - See the **Security** section below for the full header set.
 
 ## 🔒 Security

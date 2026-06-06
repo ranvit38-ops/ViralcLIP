@@ -41,19 +41,20 @@ window.RTS_CONFIG = {
     //     donations, and Apple/Google Pay are automatic. Paste the URL:
     stripePaymentLink: "",        // e.g. "https://donate.stripe.com/xxxxxxxx"
 
-    // (b) Donorbox — embedded donation form (also does recurring).
-    //     Make a campaign, then copy its embed URL:
-    donorboxUrl: "",              // e.g. "https://donorbox.org/embed/your-campaign"
+    // (b) Donorbox — embedded donation form (cards, Apple Pay, Google Pay,
+    //     recurring, 40+ currencies — works for donors anywhere). Paste the
+    //     campaign URL or its /embed/ URL; both are accepted.
+    donorboxUrl: "https://donorbox.org/ready-to-serve-foundation",
 
     // (c) Stripe Buy Button — embedded button. From Stripe → Buy button:
     stripeBuyButtonId: "",        // e.g. "buy_btn_xxx"
     stripePublishableKey: "",     // e.g. "pk_live_xxx"
 
-    /* ---- UPI (INR only — instant, zero fee, straight to their bank) ---- */
-    upiId: "8790815527@upi",      // <-- REPLACE with the VERIFIED UPI ID
+    /* ---- UPI (INR only) — not used; left empty ---- */
+    upiId: "",
     upiPayeeName: "Ready To Serve Foundation",
 
-    /* ---- PayPal (works in any currency, no signup keys needed) ---- */
+    /* ---- PayPal (optional, any currency) ---- */
     paypalHandle: ""              // e.g. "ReadyToServe"  (from paypal.me/ReadyToServe)
   },
 

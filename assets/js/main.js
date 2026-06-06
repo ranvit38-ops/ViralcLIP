@@ -133,20 +133,33 @@
     return el("p", { class: "cardpay__secure" },
       '🔒 Secured by ' + provider + ' · your card details are entered on their PCI-compliant page and never touch this website.');
   }
+  function hideGiveMore() { var gm = $("#giveMore"); if (gm) { gm.open = false; gm.hidden = true; } }
+  function donorboxEmbedUrl(u) {
+    var s = safeUrl(u, ["donorbox.org"]); if (!s) return null;
+    var x = new URL(s);
+    if (!/^\/embed\//.test(x.pathname)) x.pathname = "/embed" + x.pathname; // /slug -> /embed/slug
+    return x.href;
+  }
   function renderCardMethod() {
     var box = $("#cardMethod"); if (!box) return false;
     box.innerHTML = "";
 
-    // (b) Donorbox embedded form
-    var dbox = safeUrl(pay.donorboxUrl, ["donorbox.org"]);
-    if (dbox) {
+    // (b) Donorbox embedded form — cards, Apple Pay, Google Pay, recurring, any currency
+    var dboxEmbed = donorboxEmbedUrl(pay.donorboxUrl);
+    if (dboxEmbed) {
+      loadScript("https://donorbox.org/widget.js"); // auto-resizes the iframe
       var wrap = el("div", { class: "cardpay__embed" });
       wrap.appendChild(el("iframe", {
-        src: dbox, name: "donorbox", title: "Donate securely", allow: "payment",
-        allowpaymentrequest: "", frameborder: "0", scrolling: "no", height: "700", width: "100%"
+        src: dboxEmbed, name: "donorbox", title: "Donate securely", allow: "payment",
+        allowpaymentrequest: "", seamless: "seamless", frameborder: "0", scrolling: "no",
+        height: "900", width: "100%", style: "max-width:100%;min-width:250px;max-height:none!important"
       }));
       box.appendChild(wrap);
-      box.appendChild(secureNote("Donorbox"));
+      var note = secureNote("Donorbox");
+      var openLink = safeUrl(pay.donorboxUrl, ["donorbox.org"]);
+      if (openLink) note.innerHTML += ' · <a href="' + openLink + '" target="_blank" rel="noopener noreferrer">Trouble seeing the form? Open it in a new tab →</a>';
+      box.appendChild(note);
+      hideGiveMore();
       return true;
     }
     // (c) Stripe Buy Button (embedded)
@@ -158,6 +171,7 @@
       box.appendChild(el("p", { class: "cardpay__title" }, "Donate by card · Apple Pay · Google Pay"));
       box.appendChild(sb);
       box.appendChild(secureNote("Stripe"));
+      hideGiveMore();
       return true;
     }
     // (a) Stripe Payment Link / generic hosted checkout
@@ -168,6 +182,7 @@
         href: link, target: "_blank", rel: "noopener noreferrer"
       }, wallets() + '<span>Donate by card · Apple&nbsp;Pay · Google&nbsp;Pay</span>'));
       box.appendChild(secureNote("Stripe"));
+      hideGiveMore();
       return true;
     }
     // Nothing configured -> secure preview + reveal the working methods below

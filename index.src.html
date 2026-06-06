@@ -4,23 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-  <!-- Security: no card data is handled here; payments are delegated to
-       PCI-compliant providers (UPI apps, PayPal, hosted pages) over HTTPS.
-       This Content-Security-Policy is intentionally non-breaking (allows the
-       site's own inlined script/style) while blocking framing, plugins,
-       base-tag hijacking and unexpected third-party connections. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com https://www.googletagmanager.com https://plausible.io https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self'; connect-src 'self' https://api.stripe.com https://js.stripe.com https://donorbox.org https://www.google-analytics.com https://plausible.io https://cloudflareinsights.com; frame-src https://www.paypal.com https://js.stripe.com https://checkout.stripe.com https://donorbox.org https://*.donorbox.org; object-src 'none'; base-uri 'self'; form-action 'self' https://www.paypal.com; upgrade-insecure-requests" />
+  <!-- Security: no card data is handled here; the donation form is served by
+       PCI-compliant providers (Donorbox / Stripe) over HTTPS. This
+       Content-Security-Policy is intentionally non-breaking (allows the site's
+       own inlined script/style + only the trusted payment & analytics domains)
+       while blocking framing, plugins, base-tag hijacking and unexpected
+       third-party connections. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com https://donorbox.org https://www.googletagmanager.com https://plausible.io https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self'; connect-src 'self' https://api.stripe.com https://js.stripe.com https://donorbox.org https://www.google-analytics.com https://plausible.io https://cloudflareinsights.com; frame-src https://www.paypal.com https://js.stripe.com https://checkout.stripe.com https://donorbox.org https://*.donorbox.org; object-src 'none'; base-uri 'self'; form-action 'self' https://www.paypal.com; upgrade-insecure-requests" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="color-scheme" content="light" />
 
   <title>Ready To Serve Foundation — Donate to our Old Age Home</title>
-  <meta name="description" content="Donate directly to the Ready To Serve Foundation free old age home in Vanasthalipuram, Hyderabad. Your gift feeds and cares for elders with nowhere else to turn. Pay instantly by UPI." />
+  <meta name="description" content="Donate to the Ready To Serve Foundation free old age home in Vanasthalipuram, Hyderabad. Your gift feeds and cares for elders with nowhere else to turn. Give by card, Apple Pay or Google Pay from anywhere in the world." />
   <meta name="theme-color" content="#0f5132" />
   <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg" />
 
   <!-- Social share preview -->
   <meta property="og:title" content="Ready To Serve Foundation — Give an elder a warm meal" />
-  <meta property="og:description" content="Your donation goes directly to our free old age home in Hyderabad. Pay instantly by UPI." />
+  <meta property="og:description" content="Your donation cares for elders at our free old age home in Hyderabad. Give by card or Apple Pay from anywhere in the world." />
   <meta property="og:type" content="website" />
   <meta property="og:image" content="assets/img/poster-celebration.jpg" />
 
@@ -73,7 +74,7 @@
       <ul class="hero__stats" role="list">
         <li><strong data-count="40">40</strong><span>Elders cared for</span></li>
         <li><strong data-count="1095">1,095</strong><span>Meals served / month</span></li>
-        <li><strong>100%</strong><span>Goes to the home</span></li>
+        <li><strong>100%</strong><span>Volunteer-run</span></li>
       </ul>
     </div>
     <a href="#about" class="hero__scroll" aria-label="Scroll down">▾</a>
@@ -111,7 +112,7 @@
       <div class="section__head">
         <span class="kicker">Your impact</span>
         <h2>See exactly what your gift does</h2>
-        <p class="section__sub">Choose an amount on the donation card and you'll know precisely what it provides. Small or large, it arrives the same day.</p>
+        <p class="section__sub">Here's what your kindness provides. Every gift, big or small, goes straight to caring for our elders.</p>
       </div>
       <div class="impact__grid" id="impactGrid">
         <!-- filled by JS from config presets -->
@@ -125,12 +126,12 @@
 
       <div class="donate__intro">
         <span class="kicker kicker--light">Give in 30 seconds</span>
-        <h2>Send your gift <em>directly</em> to the home</h2>
-        <p>We use <strong>UPI</strong> so your money lands <strong>instantly and directly</strong> in the foundation's bank account — no fees, no middle-man, 100% reaches the elders.</p>
+        <h2>Help an elder, from <em>anywhere</em> in the world</h2>
+        <p>Donate securely by <strong>card, Apple&nbsp;Pay, Google&nbsp;Pay</strong> or bank — in your own currency. You can give once or set up a small <strong>monthly</strong> gift, and you'll get an instant receipt.</p>
         <ul class="donate__assure" role="list">
-          <li><svg viewBox="0 0 24 24" class="i"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Instant &amp; direct bank-to-bank</li>
-          <li><svg viewBox="0 0 24 24" class="i"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> No platform or processing fees</li>
-          <li><svg viewBox="0 0 24 24" class="i"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Works on any phone or laptop</li>
+          <li><svg viewBox="0 0 24 24" class="i"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Card · Apple&nbsp;Pay · Google&nbsp;Pay</li>
+          <li><svg viewBox="0 0 24 24" class="i"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Any country, any currency</li>
+          <li><svg viewBox="0 0 24 24" class="i"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Secure checkout · instant receipt</li>
         </ul>
         <p class="donate__call">Prefer to talk first? Call or WhatsApp
           <a id="phoneLink" href="tel:8790815527" class="link-strong">8790815527</a>
@@ -141,61 +142,13 @@
       <div class="card donate__card" id="donateCard">
         <h3 class="card__title">Make your donation</h3>
 
-        <!-- PRIMARY: Card · Apple Pay · Google Pay (hosted & PCI-secure; rendered by script) -->
+        <!-- Card · Apple Pay · Google Pay · recurring · any currency.
+             The full secure donation form is rendered here by script
+             (Donorbox / Stripe). Donors enter their details on the
+             processor's PCI-compliant form — never on this site. -->
         <div id="cardMethod" class="cardpay" aria-live="polite"></div>
 
-        <!-- Other ways to give -->
-        <details class="give-more" id="giveMore">
-          <summary class="give-more__sum">
-            <span>Other ways to give</span>
-            <span class="give-more__tag">UPI · PayPal · Bank</span>
-          </summary>
-          <div class="give-more__body">
-            <label class="currency-sel currency-sel--row" for="currencySel">
-              <span class="currency-sel__lbl">Currency</span>
-              <select id="currencySel" aria-label="Choose currency">
-                <option value="INR">INR (₹)</option>
-              </select>
-            </label>
-
-            <div class="amount-grid" id="amountGrid" role="group" aria-label="Choose an amount">
-              <!-- preset buttons injected by JS -->
-            </div>
-
-            <label class="custom-amount" for="customAmount">
-              <span>Or enter your own amount</span>
-              <div class="custom-amount__field">
-                <span class="rupee" id="curSymbol">₹</span>
-                <input id="customAmount" type="number" inputmode="decimal" min="1" step="any" placeholder="Amount" />
-              </div>
-            </label>
-            <p class="amount-note" id="amountNote"></p>
-
-            <a id="payBtn" class="btn btn--primary btn--lg btn--block" href="#" role="button">Choose an amount</a>
-            <p class="hint hint--mobile" id="payHint">Opens Google&nbsp;Pay, PhonePe, Paytm or any UPI app on your phone.</p>
-            <p class="pay-reason" id="payReason" hidden></p>
-
-            <div class="qr-block" id="qrBlock">
-              <div class="qr-block__code" id="qrCode" aria-label="Payment QR code"></div>
-              <div class="qr-block__copy">
-                <p class="qr-block__lead" id="qrLead">On a laptop? <strong>Scan to pay</strong> with any UPI app.</p>
-                <button class="copy-row" id="copyUpi" type="button">
-                  <span class="copy-row__label">UPI ID</span>
-                  <span class="copy-row__value" id="upiIdText">8790815527@upi</span>
-                  <span class="copy-row__btn" aria-hidden="true">Copy</span>
-                </button>
-                <p class="copied" id="copiedMsg" hidden>Copied ✓</p>
-              </div>
-            </div>
-
-            <details class="bank" id="bankDetails" hidden>
-              <summary>Bank transfer (NEFT / IMPS / SWIFT)</summary>
-              <dl class="bank__list" id="bankList"></dl>
-            </details>
-          </div>
-        </details>
-
-        <p class="card__foot">100% reaches the home · we never see or store card details · receipt on request. 🙏</p>
+        <p class="card__foot">Secure checkout · we never see or store your card details · instant receipt. 🙏</p>
       </div>
     </div>
   </section>
