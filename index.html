@@ -207,8 +207,15 @@ em{font-style:italic;color:var(--gold-500)}
 .cardpay{margin-bottom:1.1rem}
 .cardpay__btn{flex-direction:column;gap:.4rem;padding-block:1em}
 .cardpay__btn>span{font-size:1.02rem}
-.cardpay__embed{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff}
-.cardpay__embed iframe{display:block;width:100%;border:0}
+.cardpay__embed{border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 10px 30px -18px rgba(11,61,46,.45)}
+.cardpay__embedhead{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;
+  padding:.7em 1em;color:#fff;background:linear-gradient(135deg,var(--green-700),var(--green-500));
+  border-bottom:3px solid var(--gold-500)}
+.cardpay__embedtitle{display:flex;align-items:center;gap:.45rem;font-family:var(--font-head);font-weight:700;font-size:1.02rem}
+.cardpay__embedbadge{font-size:.7rem;font-weight:800;letter-spacing:.02em;background:rgba(255,255,255,.18);
+  border:1px solid rgba(255,255,255,.28);padding:.32em .6em;border-radius:100px}
+.cardpay__embedbody{background:var(--cream)}
+.cardpay__embed iframe{display:block;width:100%;border:0;background:transparent}
 .cardpay__title{font-weight:700;text-align:center;margin:.2rem 0 .6rem;color:var(--green-800,#0b3d2e)}
 .cardpay__secure{font-size:.78rem;color:var(--ink-soft);text-align:center;margin:.6rem 0 0;line-height:1.4}
 .cardpay__preview{border:1.5px dashed var(--line);border-radius:16px;padding:1.2rem;text-align:center;background:var(--cream)}
@@ -837,11 +844,18 @@ window.RTS_CONFIG = {
     if (dboxEmbed) {
       loadScript("https://donorbox.org/widget.js"); // auto-resizes the iframe
       var wrap = el("div", { class: "cardpay__embed" });
-      wrap.appendChild(el("iframe", {
+      wrap.appendChild(el("div", { class: "cardpay__embedhead" },
+        '<span class="cardpay__embedtitle">' +
+          '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>' +
+          'Donate securely</span>' +
+        '<span class="cardpay__embedbadge">Card · Apple Pay · Google Pay</span>'));
+      var body = el("div", { class: "cardpay__embedbody" });
+      body.appendChild(el("iframe", {
         src: dboxEmbed, name: "donorbox", title: "Donate securely", allow: "payment",
         allowpaymentrequest: "", seamless: "seamless", frameborder: "0", scrolling: "no",
         height: "900", width: "100%", style: "max-width:100%;min-width:250px;max-height:none!important"
       }));
+      wrap.appendChild(body);
       box.appendChild(wrap);
       var note = secureNote("Donorbox");
       var openLink = safeUrl(pay.donorboxUrl, ["donorbox.org"]);

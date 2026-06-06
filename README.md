@@ -38,6 +38,22 @@ In the **Donorbox dashboard** (app.donorbox.org), the campaign must have a
 (quick express setup) or **PayPal**. That's where the foundation's bank details
 go, so donations have somewhere to land. Do a small test donation once connected.
 
+### Make the form's colours match the site
+The embedded form sits in a branded green/gold frame already. To recolour the
+**form's own buttons/accents** (which live inside Donorbox and can't be styled
+from this site), set them in **app.donorbox.org → your campaign → Edit →
+Design/Style**, using the site's palette:
+
+| Use | Hex |
+|---|---|
+| Brand / button colour (primary) | `#157347` (or deeper `#0f5132`) |
+| Accent / highlight | `#E0A93B` (gold) |
+| Background | `transparent` or `#FBF7EF` (cream) |
+| Text | `#22281F` |
+
+(Some colour options require Donorbox's paid plan; the brand/button colour is
+available on the free plan.)
+
 ### Other options (optional)
 The same `payments` block also supports a **Stripe Payment Link**
 (`stripePaymentLink`), a **Stripe Buy Button**, or **PayPal** (`paypalHandle`) —

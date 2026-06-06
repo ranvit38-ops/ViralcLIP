@@ -149,11 +149,18 @@
     if (dboxEmbed) {
       loadScript("https://donorbox.org/widget.js"); // auto-resizes the iframe
       var wrap = el("div", { class: "cardpay__embed" });
-      wrap.appendChild(el("iframe", {
+      wrap.appendChild(el("div", { class: "cardpay__embedhead" },
+        '<span class="cardpay__embedtitle">' +
+          '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>' +
+          'Donate securely</span>' +
+        '<span class="cardpay__embedbadge">Card · Apple Pay · Google Pay</span>'));
+      var body = el("div", { class: "cardpay__embedbody" });
+      body.appendChild(el("iframe", {
         src: dboxEmbed, name: "donorbox", title: "Donate securely", allow: "payment",
         allowpaymentrequest: "", seamless: "seamless", frameborder: "0", scrolling: "no",
         height: "900", width: "100%", style: "max-width:100%;min-width:250px;max-height:none!important"
       }));
+      wrap.appendChild(body);
       box.appendChild(wrap);
       var note = secureNote("Donorbox");
       var openLink = safeUrl(pay.donorboxUrl, ["donorbox.org"]);
