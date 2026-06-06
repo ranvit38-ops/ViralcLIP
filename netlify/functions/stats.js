@@ -75,7 +75,7 @@ exports.handler = async (event) => {
         if (recent.length < 25) {
           let method = "card";
           const pd = c.payment_method_details || {};
-          if (pd.type && pd.type !== "card") method = pd.type;          // upi, paypal, etc.
+          if (pd.type && pd.type !== "card") method = pd.type;          // e.g. paypal, link, etc.
           const wallet = pd.card && pd.card.wallet && pd.card.wallet.type;
           if (wallet === "apple_pay") method = "applepay";
           else if (wallet === "google_pay") method = "gpay";

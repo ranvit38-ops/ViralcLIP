@@ -8,7 +8,6 @@ root = pathlib.Path(__file__).parent
 read = lambda p: (root / p).read_text(encoding="utf-8")
 
 css      = read("assets/css/styles.css")
-qrcode   = read("assets/js/qrcode.min.js")
 config   = read("assets/js/config.js")
 main     = read("assets/js/main.js")
 html     = read("index.src.html")
@@ -47,7 +46,7 @@ scripts_block = (
 ) % (config, main)
 
 html = re.sub(
-    r'  <!-- QR library.*?<script src="assets/js/main\.js"></script>',
+    r'  <!-- App scripts.*?<script src="assets/js/main\.js"></script>',
     lambda m: scripts_block,   # function repl => no backslash interpretation
     html,
     flags=re.S,
