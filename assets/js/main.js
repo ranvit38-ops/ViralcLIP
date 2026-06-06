@@ -1,11 +1,8 @@
 /* =====================================================================
-   Ready To Serve Foundation — interactions, multi-currency donations
-   Security notes:
-     • No card data is ever entered or stored here; we only build links
-       to PCI-compliant providers (UPI apps, PayPal, hosted pages).
-     • All user input (amount) is validated as a finite positive number
-       and clamped; it is encoded before being placed in any URL.
-     • External links open with rel="noopener noreferrer".
+   Ready To Serve Foundation — interactions
+   Donations are handled entirely by an embedded Donorbox form (cards,
+   Apple Pay, Google Pay, recurring, many currencies). No card data ever
+   touches this site. External links use rel="noopener noreferrer".
    ===================================================================== */
 (function () {
   "use strict";
@@ -14,94 +11,16 @@
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
 
-  var MAX_AMOUNT = 1000000; // sane upper bound to reject bad/overflow input
-
-  function currencies() { return (cfg.currencies && cfg.currencies.length) ? cfg.currencies : [{ code: "INR", symbol: "₹", locale: "en-IN", amounts: [200, 500, 1000, 5000] }]; }
-  function findCurrency(code) { return currencies().filter(function (c) { return c.code === code; })[0] || currencies()[0]; }
-
-  var state = {
-    cur: currencies()[0],
-    amount: 0
-  };
-
-  /* ---------- Amount helpers ---------- */
-  function decimals(cur) { return cur.code === "INR" ? 0 : 2; }
-
-  function sanitize(value, cur) {
-    var n = typeof value === "number" ? value : parseFloat(String(value).replace(/[^0-9.\-]/g, ""));
-    if (!isFinite(n) || n <= 0) return 0;   // reject negatives, zero, NaN, Infinity
-    if (n > MAX_AMOUNT) n = MAX_AMOUNT;
-    var d = decimals(cur);
-    return d === 0 ? Math.round(n) : Math.round(n * 100) / 100;
+  /* ---------- small DOM helpers ---------- */
+  function el(tag, attrs, html) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (html != null) e.innerHTML = html;
+    return e;
   }
-
-  function fmt(amount, cur) {
-    try {
-      return new Intl.NumberFormat(cur.locale, {
-        style: "currency", currency: cur.code,
-        minimumFractionDigits: 0, maximumFractionDigits: decimals(cur)
-      }).format(amount);
-    } catch (e) {
-      return cur.symbol + amount.toLocaleString();
-    }
-  }
-  function plain(amount, cur) { return amount.toFixed(decimals(cur)); }
-
-  /* ---------- Payment routing ---------- */
-  // Returns { method, enabled, href, newTab, label, hint, reason }
-  function resolvePayment() {
-    var amt = state.amount, cur = state.cur;
-    var amtStr = amt ? fmt(amt, cur) : fmt(0, cur);
-
-    // INR -> UPI (preferred: instant, zero-fee, direct)
-    if (cur.code === "INR" && pay.upiId) {
-      return {
-        method: "upi", enabled: !!amt, newTab: false,
-        href: upiLink(amt),
-        label: amt ? "Pay " + amtStr + " with UPI app" : "Choose an amount",
-        hint: "Opens Google Pay, PhonePe, Paytm or any UPI app on your phone."
-      };
-    }
-    // Any currency -> PayPal (works in every currency)
-    if (pay.paypalHandle) {
-      var h = encodeURIComponent(String(pay.paypalHandle).replace(/^https?:\/\/(www\.)?paypal\.me\//i, "").replace(/^\/+|\/+$/g, ""));
-      var url = "https://www.paypal.com/paypalme/" + h + (amt ? "/" + encodeURIComponent(plain(amt, cur)) + cur.code : "");
-      return {
-        method: "paypal", enabled: !!amt, newTab: true, href: url,
-        label: amt ? "Donate " + amtStr + " via PayPal" : "Choose an amount",
-        hint: "Secure checkout on PayPal — pay by card or PayPal balance. You can change the amount there too."
-      };
-    }
-    // Any currency -> hosted donation page
-    if (pay.hostedDonateUrl) {
-      return {
-        method: "hosted", enabled: true, newTab: true, href: pay.hostedDonateUrl,
-        label: amt ? "Donate " + amtStr : "Donate securely",
-        hint: "Secure checkout on our donation partner's page."
-      };
-    }
-    // Nothing configured for this currency
-    if (cur.code === "INR") {
-      return { method: "none", enabled: false, href: "#",
-        label: "Donations not yet enabled",
-        hint: "", reason: "Add a UPI ID in the settings to enable INR donations." };
-    }
-    return { method: "none", enabled: false, href: "#",
-      label: "International giving coming soon",
-      hint: "", reason: "Add a PayPal handle or hosted donation link to accept " + cur.code + ". UPI supports INR only — switch to ₹ INR to give now." };
-  }
-
-  function upiLink(amount) {
-    var p = new URLSearchParams();
-    p.set("pa", pay.upiId || "");
-    p.set("pn", pay.upiPayeeName || cfg.orgName || "");
-    p.set("cu", "INR");
-    if (amount && amount > 0) p.set("am", String(amount));
-    p.set("tn", "Donation to " + (cfg.orgName || "charity"));
-    return "upi://pay?" + p.toString();
-  }
-
-  /* ---------- Card / Apple Pay / Google Pay (hosted, PCI-secure) ---------- */
+  function escapeHtml(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); }
+  var loaded = {};
+  function loadScript(src) { if (loaded[src]) return; loaded[src] = true; var s = document.createElement("script"); s.src = src; s.async = true; document.head.appendChild(s); }
   function safeUrl(u, hosts) {
     if (!u) return null;
     try {
@@ -111,17 +30,8 @@
       return x.href;
     } catch (e) { return null; }
   }
-  function el(tag, attrs, html) {
-    var e = document.createElement(tag);
-    if (attrs) Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
-  var loaded = {};
-  function loadScript(src) {
-    if (loaded[src]) return; loaded[src] = true;
-    var s = document.createElement("script"); s.src = src; s.async = true; document.head.appendChild(s);
-  }
+
+  /* ---------- Donation method (Donorbox / Stripe) ---------- */
   function wallets() {
     return '<span class="wallets">' +
       '<span class="wallet wallet--apple"> Pay</span>' +
@@ -133,7 +43,6 @@
     return el("p", { class: "cardpay__secure" },
       '🔒 Secured by ' + provider + ' · your card details are entered on their PCI-compliant page and never touch this website.');
   }
-  function hideGiveMore() { var gm = $("#giveMore"); if (gm) { gm.open = false; gm.hidden = true; } }
   function donorboxEmbedUrl(u) {
     var s = safeUrl(u, ["donorbox.org"]); if (!s) return null;
     var x = new URL(s);
@@ -144,7 +53,7 @@
     var box = $("#cardMethod"); if (!box) return false;
     box.innerHTML = "";
 
-    // (b) Donorbox embedded form — cards, Apple Pay, Google Pay, recurring, any currency
+    // Donorbox embedded form (cards, Apple Pay, Google Pay, recurring, many currencies)
     var dboxEmbed = donorboxEmbedUrl(pay.donorboxUrl);
     if (dboxEmbed) {
       loadScript("https://donorbox.org/widget.js"); // auto-resizes the iframe
@@ -153,23 +62,22 @@
         '<span class="cardpay__embedtitle">' +
           '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>' +
           'Donate securely</span>' +
-        '<span class="cardpay__embedbadge">Card · Apple Pay · Google Pay</span>'));
-      var body = el("div", { class: "cardpay__embedbody" });
-      body.appendChild(el("iframe", {
+        '<span class="cardpay__embedbadge">Card · Apple Pay · Google Pay</span>'));
+      var bodyEl = el("div", { class: "cardpay__embedbody" });
+      bodyEl.appendChild(el("iframe", {
         src: dboxEmbed, name: "donorbox", title: "Donate securely", allow: "payment",
         allowpaymentrequest: "", seamless: "seamless", frameborder: "0", scrolling: "no",
         height: "900", width: "100%", style: "max-width:100%;min-width:250px;max-height:none!important"
       }));
-      wrap.appendChild(body);
+      wrap.appendChild(bodyEl);
       box.appendChild(wrap);
       var note = secureNote("Donorbox");
       var openLink = safeUrl(pay.donorboxUrl, ["donorbox.org"]);
       if (openLink) note.innerHTML += ' · <a href="' + openLink + '" target="_blank" rel="noopener noreferrer">Trouble seeing the form? Open it in a new tab →</a>';
       box.appendChild(note);
-      hideGiveMore();
       return true;
     }
-    // (c) Stripe Buy Button (embedded)
+    // Stripe Buy Button (embedded)
     if (pay.stripeBuyButtonId && pay.stripePublishableKey) {
       loadScript("https://js.stripe.com/v3/buy-button.js");
       var sb = el("stripe-buy-button");
@@ -178,10 +86,9 @@
       box.appendChild(el("p", { class: "cardpay__title" }, "Donate by card · Apple Pay · Google Pay"));
       box.appendChild(sb);
       box.appendChild(secureNote("Stripe"));
-      hideGiveMore();
       return true;
     }
-    // (a) Stripe Payment Link / generic hosted checkout
+    // Stripe Payment Link / generic hosted checkout
     var link = safeUrl(pay.stripePaymentLink, ["stripe.com"]) || safeUrl(pay.hostedDonateUrl, null);
     if (link) {
       box.appendChild(el("a", {
@@ -189,148 +96,67 @@
         href: link, target: "_blank", rel: "noopener noreferrer"
       }, wallets() + '<span>Donate by card · Apple&nbsp;Pay · Google&nbsp;Pay</span>'));
       box.appendChild(secureNote("Stripe"));
-      hideGiveMore();
       return true;
     }
-    // Nothing configured -> secure preview + reveal the working methods below
+    // Nothing configured -> secure preview
     var prev = el("div", { class: "cardpay__preview" });
     prev.appendChild(el("div", { class: "cardpay__head" }, wallets()));
     prev.appendChild(el("p", { class: "cardpay__title" }, "Card · Apple Pay · Google Pay"));
     prev.appendChild(el("p", { class: "cardpay__note" },
-      "Ready to switch on. Add a <strong>Stripe Payment Link</strong> or <strong>Donorbox</strong> campaign in the settings (about 5 minutes) and donors can pay by card or Apple&nbsp;Pay right here — they’ll enter their card and details on the processor’s secure page. Until then, the secure options below work now."));
+      "Ready to switch on. Add a <strong>Donorbox</strong> campaign (or Stripe link) in the settings and the secure donation form appears right here."));
     box.appendChild(prev);
-    var gm = $("#giveMore"); if (gm) gm.open = true;
     return false;
   }
 
-  /* ---------- Render currency selector ---------- */
-  function renderCurrencies() {
-    var sel = $("#currencySel");
-    if (!sel) return;
-    sel.innerHTML = currencies().map(function (c) {
-      return '<option value="' + c.code + '">' + c.code + " (" + c.symbol + ")</option>";
-    }).join("");
-    sel.value = state.cur.code;
-    sel.addEventListener("change", function () {
-      state.cur = findCurrency(sel.value);
-      renderAmountButtons();
-      setTier(cfg.defaultTier != null ? cfg.defaultTier : 2);
-    });
-  }
-
-  /* ---------- Impact cards (use INR amounts for the on-page examples) ---------- */
+  /* ---------- "Your impact" example cards ---------- */
   function renderImpact() {
-    var grid = $("#impactGrid");
-    if (!grid) return;
-    var inr = findCurrency("INR");
-    var labels = cfg.tierLabels || [];
-    grid.innerHTML = inr.amounts.map(function (a, i) {
-      return '<button class="impact-card" type="button" data-tier="' + i + '">' +
-        '<div class="impact-card__amt">' + fmt(a, inr) + '</div>' +
-        '<div class="impact-card__lbl">' + (labels[i] || "") + '</div>' +
+    var grid = $("#impactGrid"); if (!grid) return;
+    var items = cfg.impact || [];
+    grid.innerHTML = items.map(function (it) {
+      return '<button class="impact-card" type="button">' +
+        '<div class="impact-card__amt">' + escapeHtml(it.amount) + '</div>' +
+        '<div class="impact-card__lbl">' + escapeHtml(it.label) + '</div>' +
         '<div class="impact-card__cta">Give this →</div></button>';
     }).join("");
     $$(".impact-card", grid).forEach(function (c) {
-      c.addEventListener("click", function () {
-        state.cur = inr; var sel = $("#currencySel"); if (sel) sel.value = "INR";
-        renderAmountButtons();
-        setTier(Number(c.dataset.tier));
-        var d = document.getElementById("donate"); if (d) d.scrollIntoView({ behavior: "smooth" });
-      });
+      c.addEventListener("click", function () { var d = $("#donate"); if (d) d.scrollIntoView({ behavior: "smooth" }); });
     });
   }
 
-  /* ---------- Amount buttons for the active currency ---------- */
-  function renderAmountButtons() {
-    var grid = $("#amountGrid");
-    if (!grid) return;
-    var labels = cfg.tierLabels || [];
-    grid.innerHTML = state.cur.amounts.map(function (a, i) {
-      return '<button class="amount-btn" type="button" data-tier="' + i + '" data-amount="' + a + '">' +
-        '<span class="amount-btn__amt">' + fmt(a, state.cur) + '</span>' +
-        '<span class="amount-btn__lbl">' + (labels[i] || "") + '</span></button>';
-    }).join("");
-    $$(".amount-btn", grid).forEach(function (b) {
-      b.addEventListener("click", function () { setTier(Number(b.dataset.tier)); });
-    });
-    var sym = $("#curSymbol"); if (sym) sym.textContent = state.cur.symbol;
+  /* ---------- Accepted-currencies acknowledgment ---------- */
+  function renderCurrencies() {
+    var box = $("#curChips"); if (!box) return;
+    var list = cfg.acceptedCurrencies || [];
+    box.innerHTML = list.map(function (c) { return '<span class="cur-chip">' + escapeHtml(c) + "</span>"; }).join("");
   }
 
-  function setTier(i) {
-    var a = state.cur.amounts[i];
-    setAmount(a);
-    var input = $("#customAmount"); if (input) input.value = a;
-  }
-
-  /* ---------- Core: set amount + sync everything ---------- */
-  function setAmount(value, fromInput) {
-    state.amount = sanitize(value, state.cur);
-
-    $$(".amount-btn").forEach(function (b) {
-      b.classList.toggle("is-active", Number(b.dataset.amount) === state.amount && state.cur.code === findCurrency($("#currencySel") ? $("#currencySel").value : state.cur.code).code);
-    });
-    if (!fromInput) { var input = $("#customAmount"); if (input) input.value = state.amount || ""; }
-
-    var note = $("#amountNote");
-    if (note) note.textContent = state.amount ? "✨ Thank you for your generosity ❤️" : "";
-
-    var p = resolvePayment();
-
-    var btn = $("#payBtn");
-    if (btn) {
-      btn.textContent = p.label;
-      btn.setAttribute("href", p.enabled ? p.href : "#");
-      btn.setAttribute("aria-disabled", p.enabled ? "false" : "true");
-      btn.classList.toggle("btn--disabled", !p.enabled);
-      if (p.newTab) { btn.setAttribute("target", "_blank"); btn.setAttribute("rel", "noopener noreferrer"); }
-      else { btn.removeAttribute("target"); btn.removeAttribute("rel"); }
-    }
-    var hint = $("#payHint"); if (hint) hint.textContent = p.hint || "";
-    var reason = $("#payReason");
-    if (reason) { reason.textContent = p.reason || ""; reason.hidden = !p.reason; }
-
-    // sticky bar
-    var sticky = $("#stickyAmount"); if (sticky) sticky.textContent = state.amount ? fmt(state.amount, state.cur) : "";
-
-    // method-specific QR + UPI-ID row
-    var copyRow = $("#copyUpi");
-    if (copyRow) copyRow.hidden = (p.method !== "upi");
-    var qrLead = $("#qrLead");
-    if (qrLead) qrLead.textContent = p.method === "upi"
-      ? "On a laptop? Scan to pay with any UPI app."
-      : (p.enabled ? "On a laptop? Scan this to open the secure donation page on your phone." : "");
-
-    renderQR(p.enabled ? p.href : "");
-  }
-
-  /* ---------- QR of whatever the active payment link is ---------- */
-  function renderQR(text) {
-    var box = $("#qrCode");
-    if (!box) return;
-    box.innerHTML = "";
-    if (!text || typeof QRCode === "undefined") { box.style.display = text ? "" : "none"; return; }
-    box.style.display = "";
-    try {
-      new QRCode(box, { text: text, width: 240, height: 240, colorDark: "#0b3d2e", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
-    } catch (e) { box.style.display = "none"; }
-  }
-
-  /* ---------- Copy UPI ID ---------- */
-  function wireCopy() {
-    var idText = $("#upiIdText"); if (idText) idText.textContent = pay.upiId || "—";
-    var btn = $("#copyUpi"); if (!btn) return;
-    btn.addEventListener("click", function () {
-      var val = pay.upiId || "";
-      var done = function () { var m = $("#copiedMsg"); if (m) { m.hidden = false; setTimeout(function () { m.hidden = true; }, 1800); } };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(val).then(done, done);
-      else { var t = document.createElement("textarea"); t.value = val; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); } catch (e) {} document.body.removeChild(t); done(); }
-    });
+  /* ---------- Thank-you message after donating ----------
+     Shown when a donor returns with ?donated=1 (or #thanks). Set your
+     Donorbox campaign's "redirect after donation" to thank-you.html, or to
+     this page with ?donated=1, to greet donors here. */
+  function wireThankYou() {
+    var overlay = $("#thanksOverlay"); if (!overlay) return;
+    var show = /[?&]donated=1\b/.test(location.search) || location.hash === "#thanks";
+    var open = function () {
+      overlay.hidden = false; document.body.style.overflow = "hidden";
+      var btn = $("#thanksClose"); if (btn) btn.focus();
+    };
+    var close = function () {
+      overlay.hidden = true; document.body.style.overflow = "";
+      if (location.hash === "#thanks" || /donated=1/.test(location.search)) {
+        history.replaceState(null, "", location.pathname);
+      }
+    };
+    if (show) open();
+    var c = $("#thanksClose"); if (c) c.addEventListener("click", close);
+    overlay.addEventListener("click", function (e) { if (e.target === overlay) close(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !overlay.hidden) close(); });
   }
 
   /* ---------- Populate text from config ---------- */
   function hydrate() {
     var tel = (cfg.phone || "").replace(/\s+/g, "");
-    var setHref = function (id, href, text) { var el = $(id); if (!el) return; el.href = href; if (text != null) el.textContent = text; };
+    var setHref = function (id, href, text) { var e = $(id); if (!e) return; e.href = href; if (text != null) e.textContent = text; };
     if (cfg.phone) { setHref("#phoneLink", "tel:" + tel, cfg.phone); setHref("#footerPhone", "tel:" + tel, "📞 " + cfg.phone); }
     if (cfg.email) { var w = $("#footerEmailWrap"); if (w) w.hidden = false; setHref("#footerEmail", "mailto:" + cfg.email, cfg.email); }
     var loc = $("#footerLocation"); if (loc) loc.textContent = cfg.location || "";
@@ -338,23 +164,13 @@
     if (cfg.regNo) { var rw = $("#footerRegWrap"); if (rw) rw.hidden = false; var rg = $("#footerReg"); if (rg) rg.textContent = cfg.regNo; }
     if (cfg.instagramReel) { var r = $("#reelLink"); if (r) { r.href = cfg.instagramReel; r.rel = "noopener noreferrer"; } }
 
-    // bank details
     var b = cfg.bank || {};
     if (b.accountNumber && (b.ifsc || b.swift)) {
       var det = $("#bankDetails"); if (det) det.hidden = false;
       var rows = [["Account name", b.accountName], ["Account no.", b.accountNumber], ["IFSC", b.ifsc], ["SWIFT/BIC", b.swift], ["Bank", b.bankName], ["Branch", b.branch]].filter(function (r) { return r[1]; });
-      var list = $("#bankList"); if (list) list.innerHTML = rows.map(function (r) { return "<dt>" + r[0] + "</dt><dd>" + escapeHtml(r[1]) + "</dd>"; }).join("");
+      var bl = $("#bankList"); if (bl) bl.innerHTML = rows.map(function (r) { return "<dt>" + r[0] + "</dt><dd>" + escapeHtml(r[1]) + "</dd>"; }).join("");
     }
     var y = $("#year"); if (y) y.textContent = new Date().getFullYear();
-  }
-
-  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); }
-
-  /* ---------- Custom amount input ---------- */
-  function wireCustomAmount() {
-    var input = $("#customAmount"); if (!input) return;
-    input.addEventListener("input", function () { setAmount(input.value, true); });
-    input.addEventListener("blur", function () { if (state.amount) input.value = state.amount; });
   }
 
   /* ---------- Nav + sticky donate ---------- */
@@ -386,12 +202,12 @@
     var io = new IntersectionObserver(function (es) {
       es.forEach(function (e) {
         if (!e.isIntersecting) return; io.unobserve(e.target);
-        var el = e.target, target = Number(el.dataset.count), t0 = null, dur = 1400;
-        var step = function (ts) { if (!t0) t0 = ts; var p = Math.min((ts - t0) / dur, 1); el.textContent = Math.floor((1 - Math.pow(1 - p, 3)) * target).toLocaleString("en-IN"); if (p < 1) requestAnimationFrame(step); };
+        var node = e.target, target = Number(node.dataset.count), t0 = null, dur = 1400;
+        var step = function (ts) { if (!t0) t0 = ts; var p = Math.min((ts - t0) / dur, 1); node.textContent = Math.floor((1 - Math.pow(1 - p, 3)) * target).toLocaleString("en-IN"); if (p < 1) requestAnimationFrame(step); };
         requestAnimationFrame(step);
       });
     }, { threshold: 0.6 });
-    els.forEach(function (el) { io.observe(el); });
+    els.forEach(function (node) { io.observe(node); });
   }
 
   function wireVideos() {
@@ -399,12 +215,9 @@
     vids.forEach(function (v) { v.addEventListener("play", function () { vids.forEach(function (o) { if (o !== v && !o.paused) o.pause(); }); }); });
   }
 
-  /* ---------- Privacy-friendly analytics (visitor counts) ----------
-     Loads only what you configure; you read the numbers in that tool's
-     own private, login-protected dashboard. */
+  /* ---------- Privacy-friendly analytics ---------- */
   function loadAnalytics() {
     var a = cfg.analytics || {};
-    // Google Analytics 4
     if (/^G-[A-Z0-9]+$/i.test(a.googleAnalyticsId || "")) {
       loadScript("https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(a.googleAnalyticsId));
       window.dataLayer = window.dataLayer || [];
@@ -412,14 +225,11 @@
       window.gtag("js", new Date());
       window.gtag("config", a.googleAnalyticsId, { anonymize_ip: true });
     }
-    // Plausible
     if (a.plausibleDomain) {
       var p = document.createElement("script");
-      p.defer = true; p.setAttribute("data-domain", a.plausibleDomain);
-      p.src = "https://plausible.io/js/script.js";
+      p.defer = true; p.setAttribute("data-domain", a.plausibleDomain); p.src = "https://plausible.io/js/script.js";
       document.head.appendChild(p);
     }
-    // Cloudflare Web Analytics
     if (a.cloudflareToken) {
       var c = document.createElement("script");
       c.defer = true; c.src = "https://static.cloudflareinsights.com/beacon.min.js";
@@ -431,17 +241,14 @@
   function init() {
     loadAnalytics();
     renderCardMethod();
-    renderCurrencies();
     renderImpact();
-    renderAmountButtons();
+    renderCurrencies();
     hydrate();
-    wireCopy();
-    wireCustomAmount();
+    wireThankYou();
     wireScroll();
     wireReveal();
     wireCounters();
     wireVideos();
-    setTier(cfg.defaultTier != null ? cfg.defaultTier : 2);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

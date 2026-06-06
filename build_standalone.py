@@ -35,19 +35,16 @@ html = html.replace(
     "<style>\n%s\n</style>" % css,
 )
 
-# 3) inline scripts (config first, then QR engine, then app logic)
+# 3) inline scripts (config first, then app logic)
 scripts_block = (
     "  <!-- ============================================================\n"
     "       EDIT YOUR CHARITY / PAYMENT DETAILS IN THE BLOCK BELOW.\n"
-    "       This is the only thing you need to change. Replace upiId with\n"
-    "       the foundation's VERIFIED UPI ID so money lands in their account.\n"
+    "       Donations are handled by your Donorbox campaign (donorboxUrl).\n"
     "       ============================================================ -->\n"
     "  <script>\n%s\n  </script>\n"
-    "  <!-- QR engine (inlined so the QR works offline / anywhere) -->\n"
-    "  <script>%s</script>\n"
     "  <!-- App logic (inlined) -->\n"
     "  <script>\n%s\n  </script>\n"
-) % (config, qrcode, main)
+) % (config, main)
 
 html = re.sub(
     r'  <!-- QR library.*?<script src="assets/js/main\.js"></script>',

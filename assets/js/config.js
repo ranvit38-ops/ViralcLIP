@@ -1,19 +1,12 @@
 /* =====================================================================
    READY TO SERVE FOUNDATION  —  SITE CONFIGURATION
    ---------------------------------------------------------------------
-   This is the ONLY block you need to edit. Fill in a payment provider to
-   accept CARD, APPLE PAY, GOOGLE PAY and donor details — securely.
+   This is the ONLY block you need to edit.
 
-   ⓘ A website can never safely take raw card numbers itself (that would
-     break PCI-DSS). Instead, the card form + Apple Pay are served by a
-     trusted processor (Stripe / Donorbox). Pick ONE of the options below;
-     each is a free ~5-minute signup, then paste a value here:
-
-       • EASIEST card + Apple Pay  -> Stripe "Payment link"  (just a URL)
-       • Embedded card form        -> Donorbox campaign      (one URL)
-       • Embedded Stripe button    -> Stripe Buy Button       (2 values)
-       • INR, instant & zero-fee   -> UPI                     (a UPI ID)
-       • Any currency, no signup   -> PayPal                  (a handle)
+   Donations are handled entirely by DONORBOX (an embedded, PCI-compliant
+   form). Donors can give by card, Apple Pay, Google Pay — one-time or
+   monthly — in rupees (₹) and many other currencies, from any country.
+   No card details ever touch this website.
    ===================================================================== */
 
 window.RTS_CONFIG = {
@@ -27,83 +20,42 @@ window.RTS_CONFIG = {
   regNo: "",
 
   /* =================================================================
-     PAYMENT SETTINGS — fill in at least one. The donation card shows
-     CARD / APPLE PAY first whenever a card provider below is set.
+     PAYMENTS — handled by Donorbox (already connected below).
      ================================================================= */
   payments: {
-
-    /* ---- CARD · APPLE PAY · GOOGLE PAY (donor enters their details) ----
-       Choose ANY one of these three. All collect card/Apple Pay/Google Pay,
-       name and email, and email a receipt — hosted & PCI-compliant.        */
-
-    // (a) Stripe Payment Link — simplest. Create one at dashboard.stripe.com
-    //     (Payment links → New). Turn on "Let customers choose amount" for
-    //     donations, and Apple/Google Pay are automatic. Paste the URL:
-    stripePaymentLink: "",        // e.g. "https://donate.stripe.com/xxxxxxxx"
-
-    // (b) Donorbox — embedded donation form (cards, Apple Pay, Google Pay,
-    //     recurring, 40+ currencies — works for donors anywhere). Paste the
-    //     campaign URL or its /embed/ URL; both are accepted.
+    // Your Donorbox campaign (campaign URL or its /embed/ URL — both work).
     donorboxUrl: "https://donorbox.org/ready-to-serve-foundation",
 
-    // (c) Stripe Buy Button — embedded button. From Stripe → Buy button:
-    stripeBuyButtonId: "",        // e.g. "buy_btn_xxx"
-    stripePublishableKey: "",     // e.g. "pk_live_xxx"
-
-    /* ---- UPI (INR only) — not used; left empty ---- */
-    upiId: "",
-    upiPayeeName: "Ready To Serve Foundation",
-
-    /* ---- PayPal (optional, any currency) ---- */
-    paypalHandle: ""              // e.g. "ReadyToServe"  (from paypal.me/ReadyToServe)
+    // Optional alternatives (leave blank to keep using Donorbox):
+    stripePaymentLink: "",
+    stripeBuyButtonId: "",
+    stripePublishableKey: "",
+    hostedDonateUrl: ""
   },
 
-  /* ---- Bank transfer (optional fallback) ---- */
-  bank: {
-    accountName: "", accountNumber: "", ifsc: "", bankName: "", branch: "", swift: ""
-  },
+  /* ---- Bank transfer (optional; shows a panel only if filled in) ---- */
+  bank: { accountName: "", accountNumber: "", ifsc: "", bankName: "", branch: "", swift: "" },
 
-  /* ---- Currencies & suggested amounts (used by the UPI / PayPal quick-give) ---- */
-  tierLabels: [
-    "A day of meals for an elder",
-    "Medicines for a week",
-    "A month of food & care",
-    "Sponsor a birthday celebration"
-  ],
-  defaultTier: 2,
-  currencies: [
-    { code: "INR", symbol: "₹",  locale: "en-IN", amounts: [200, 500, 1000, 5000] },
-    { code: "USD", symbol: "$",  locale: "en-US", amounts: [5, 15, 30, 100] },
-    { code: "EUR", symbol: "€",  locale: "en-IE", amounts: [5, 15, 30, 100] },
-    { code: "GBP", symbol: "£",  locale: "en-GB", amounts: [5, 10, 25, 75] },
-    { code: "AUD", symbol: "A$", locale: "en-AU", amounts: [10, 25, 50, 150] },
-    { code: "CAD", symbol: "C$", locale: "en-CA", amounts: [10, 25, 50, 150] },
-    { code: "SGD", symbol: "S$", locale: "en-SG", amounts: [10, 25, 50, 150] },
-    { code: "AED", symbol: "AED",locale: "en-AE", amounts: [20, 50, 100, 300] }
+  /* ---- "Your impact" examples (illustration only; donors pick the real
+         amount & currency inside the donation form) ---- */
+  impact: [
+    { amount: "₹200",   label: "A day of meals for an elder" },
+    { amount: "₹500",   label: "Medicines for a week" },
+    { amount: "₹1,000", label: "A month of food & care" },
+    { amount: "₹5,000", label: "Sponsor a birthday celebration" }
   ],
 
-  /* =================================================================
-     TRACKING & PRIVATE OWNER DASHBOARD
-     ----------------------------------------------------------------
-     "How many people on the site" -> add ONE analytics tool below.
-       You view the numbers in that tool's own login-protected dashboard
-       (only you can see it). All are free and privacy-friendly.
-     "How many paid / amounts / totals" -> your payment processor's
-       dashboard already shows this privately (Stripe / Donorbox), and
-       the on-site /admin.html page can show live totals via a serverless
-       function (see README → "Private owner dashboard").
-     ================================================================= */
+  /* ---- Currencies the donation form accepts (shown as an on-page note).
+         Enable multi-currency in your Donorbox campaign so donors can pick. ---- */
+  acceptedCurrencies: ["₹ INR", "$ USD", "€ EUR", "£ GBP", "A$ AUD", "C$ CAD", "S$ SGD", "AED"],
+
+  /* ---- Visitor analytics (you view counts in each tool's own dashboard) ---- */
   analytics: {
-    googleAnalyticsId: "",   // "G-XXXXXXXXXX"  (analytics.google.com)
-    plausibleDomain: "",     // "yourdomain.org" (plausible.io — no cookie banner needed)
-    cloudflareToken: ""      // Cloudflare Web Analytics token (cloudflare.com)
+    googleAnalyticsId: "",   // "G-XXXXXXXXXX"
+    plausibleDomain: "",     // "yourdomain.org"
+    cloudflareToken: ""      // Cloudflare Web Analytics token
   },
-  admin: {
-    // Where admin.html fetches live donation totals from (your serverless
-    // function). Leave as-is for Netlify; admin.html also has a demo mode.
-    statsEndpoint: "/.netlify/functions/stats"
-  },
+  admin: { statsEndpoint: "/.netlify/functions/stats" },
 
   instagramReel: "https://www.instagram.com/reel/DX4B9sgsQLS/"
 };
-

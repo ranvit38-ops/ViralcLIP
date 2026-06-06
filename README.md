@@ -54,6 +54,23 @@ Design/Style**, using the site's palette:
 (Some colour options require Donorbox's paid plan; the brand/button colour is
 available on the free plan.)
 
+### Donate in rupees and other currencies
+The site shows that donations are accepted in **₹ INR, USD, EUR, GBP, AUD, CAD,
+SGD, AED** (edit `acceptedCurrencies` in the config to change the list). For
+donors to actually *choose* their currency in the form, turn on **multi-currency**
+in your Donorbox campaign: **app.donorbox.org → your campaign → Edit → Settings →
+enable multiple currencies** (set ₹ INR as the base). Donorbox then shows a
+currency selector and handles the conversion.
+
+### "Thank you" after donating
+A branded **`thank-you.html`** page is included. To greet donors after they give:
+**Donorbox → your campaign → Edit → Receipts/Settings → "Redirect to your own page
+after a successful donation"** and paste the URL of `thank-you.html` (e.g.
+`https://yoursite/thank-you.html`). The site also shows a thank-you pop-up if a
+donor returns to `index.html?donated=1` (or `#thanks`) — handy if you prefer
+redirecting to the home page. Donorbox also emails every donor an automatic
+receipt + thank-you, which you can customise in its dashboard.
+
 ### Other options (optional)
 The same `payments` block also supports a **Stripe Payment Link**
 (`stripePaymentLink`), a **Stripe Buy Button**, or **PayPal** (`paypalHandle`) —
@@ -69,13 +86,13 @@ shows a tidy "ready to switch on" preview (never a broken or fake form).
 
 ## 🔒 Security
 
-- **No card data touches this site** — payments are delegated to UPI apps, PayPal
-  and other PCI-DSS-compliant providers over HTTPS.
+- **No card data touches this site** — the donation form is served by Donorbox
+  (PCI-DSS compliant) inside a secure iframe over HTTPS.
 - **Content-Security-Policy** + `X-Frame-Options`, `X-Content-Type-Options`,
   `Referrer-Policy`, `Permissions-Policy`, `HSTS` and `COOP` are set (in the page
   `<meta>` and in `_headers` / `netlify.toml` for the host).
-- **Input is validated**: amounts must be positive finite numbers, are clamped,
-  and are URL-encoded; script/HTML can't be injected into any payment link.
+- Only trusted processor/analytics domains are allow-listed; any other or
+  non-HTTPS payment URL is rejected.
 - External links use `rel="noopener noreferrer"`. No trackers, no data collection.
 - Host it over **HTTPS** (Netlify/Pages/Vercel/Cloudflare all give free HTTPS).
 
@@ -138,7 +155,8 @@ note: private repos need a paid plan, so make the repo public or use Netlify),
 ## 📁 What's inside
 
 ```
-index.html              👈 THE WEBSITE — open this. Self-contained; edit the config block to set the UPI ID.
+index.html              👈 THE WEBSITE — open this. Self-contained; edit the config block to set the Donorbox URL.
+thank-you.html          Branded "thank you" page shown after a donation (set as Donorbox redirect).
 assets/video/           The foundation's videos (compressed for the web)
 assets/img/             Poster images + favicon
 index.src.html          Source template used to build index.html (for developers)

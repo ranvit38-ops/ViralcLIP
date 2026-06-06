@@ -166,6 +166,25 @@ em{font-style:italic;color:var(--gold-500)}
 .donate__assure .i{width:1.5rem;height:1.5rem;flex:none;fill:none;stroke:var(--gold-400);stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 .donate__call{font-size:.95rem;color:rgba(255,255,255,.8)}
+.cur-note{margin-top:1.6rem}
+.cur-note__lbl{display:block;font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--gold-400);margin-bottom:.6rem}
+.cur-chips{display:flex;flex-wrap:wrap;gap:.45rem}
+.cur-chip{font-size:.82rem;font-weight:700;color:#fff;background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.22);border-radius:100px;padding:.34em .8em}
+
+/* Thank-you overlay */
+.thanks{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:5vw;
+  background:rgba(7,38,28,.62);backdrop-filter:blur(6px);animation:thanksfade .35s var(--ease)}
+@keyframes thanksfade{from{opacity:0}to{opacity:1}}
+.thanks__card{background:var(--cream);border-radius:var(--radius-lg);max-width:460px;width:100%;
+  padding:clamp(1.8rem,5vw,2.8rem);text-align:center;box-shadow:var(--shadow-lg);
+  border-top:6px solid var(--gold-500);animation:thankspop .45s var(--ease)}
+@keyframes thankspop{from{transform:translateY(16px) scale(.97);opacity:0}to{transform:none;opacity:1}}
+.thanks__emoji{font-size:3rem;line-height:1;margin-bottom:.4rem}
+.thanks__card h2{font-size:clamp(1.6rem,4vw,2.1rem);color:var(--green-700);margin-bottom:.6rem}
+.thanks__card p{color:var(--ink-soft);margin:0 0 1.6rem}
+.thanks__card .btn{width:100%}
 
 .card{background:var(--white);color:var(--ink);border-radius:var(--radius-lg);
   padding:clamp(1.4rem,3vw,2.2rem);box-shadow:var(--shadow-lg)}
@@ -240,7 +259,6 @@ em{font-style:italic;color:var(--gold-500)}
 .amount-note{min-height:1.1rem;font-size:.85rem;color:var(--green-600);font-weight:600;margin:.2rem 0 1.1rem}
 
 .hint{font-size:.82rem;color:var(--ink-soft);text-align:center;margin:.6rem 0 0}
-#upiPayBtn{margin-top:.2rem}
 
 .qr-block{display:flex;gap:1.1rem;align-items:center;margin-top:1.4rem;padding-top:1.4rem;
   border-top:1px dashed var(--line)}

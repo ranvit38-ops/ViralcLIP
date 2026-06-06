@@ -136,6 +136,11 @@
         <p class="donate__call">Prefer to talk first? Call or WhatsApp
           <a id="phoneLink" href="tel:8790815527" class="link-strong">8790815527</a>
         </p>
+
+        <div class="cur-note">
+          <span class="cur-note__lbl">Donate in your currency</span>
+          <div class="cur-chips" id="curChips" aria-label="Accepted currencies"></div>
+        </div>
       </div>
 
       <!-- DONATION CARD -->
@@ -215,9 +220,9 @@
       </div>
       <div class="footer__col">
         <h4>Give</h4>
-        <p><a href="#donate" class="link-strong">Donate by UPI →</a></p>
+        <p><a href="#donate" class="link-strong">Donate now →</a></p>
         <p id="footerRegWrap" hidden>Reg: <span id="footerReg"></span></p>
-        <p class="footer__note">100% of your gift reaches the home.</p>
+        <p class="footer__note">Card · Apple Pay · Google Pay · any currency.</p>
       </div>
     </div>
     <div class="wrap footer__base">
@@ -227,7 +232,17 @@
   </footer>
 
   <!-- Sticky mobile donate bar -->
-  <a href="#donate" class="sticky-donate" id="stickyDonate">Donate <span id="stickyAmount">₹1,000</span> →</a>
+  <a href="#donate" class="sticky-donate" id="stickyDonate">Donate now →</a>
+
+  <!-- Thank-you message shown after a donation (Donorbox redirect / ?donated=1 / #thanks) -->
+  <div class="thanks" id="thanksOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="thanksTitle">
+    <div class="thanks__card">
+      <div class="thanks__emoji" aria-hidden="true">💚</div>
+      <h2 id="thanksTitle">Thank you for your kindness</h2>
+      <p>Your gift will warm a meal, ease a worry, and remind an elder that they are loved and not forgotten. From everyone at the Ready&nbsp;To&nbsp;Serve Foundation — and the elders who call our home theirs — <strong>thank you</strong>. 🙏</p>
+      <button class="btn btn--primary" id="thanksClose" type="button">You're welcome 💚</button>
+    </div>
+  </div>
 
   <!-- QR library (renders the UPI QR in-browser; vendored locally so it works anywhere, even offline) -->
   <script src="assets/js/qrcode.min.js"></script>
