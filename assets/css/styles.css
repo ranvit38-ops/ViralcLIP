@@ -193,6 +193,7 @@ em{font-style:italic;color:var(--gold-500)}
 .cardpay__embed iframe{display:block;width:100%;border:0;background:transparent}
 .cardpay__title{font-weight:700;text-align:center;margin:.2rem 0 .6rem;color:var(--green-800,#0b3d2e)}
 .cardpay__secure{font-size:.78rem;color:var(--ink-soft);text-align:center;margin:.6rem 0 0;line-height:1.4}
+.cardpay__wallethint{font-size:.76rem;color:var(--ink-soft);text-align:center;margin:.5rem 0 0;line-height:1.4;opacity:.9}
 .cardpay__preview{border:1.5px dashed var(--line);border-radius:16px;padding:1.2rem;text-align:center;background:var(--cream)}
 .cardpay__head{margin-bottom:.6rem}
 .cardpay__note{font-size:.86rem;color:var(--ink-soft);margin:.5rem 0 0}

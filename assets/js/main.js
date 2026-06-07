@@ -75,6 +75,8 @@
       var openLink = safeUrl(pay.donorboxUrl, ["donorbox.org"]);
       if (openLink) note.innerHTML += ' · <a href="' + openLink + '" target="_blank" rel="noopener noreferrer">Trouble seeing the form? Open it in a new tab →</a>';
       box.appendChild(note);
+      box.appendChild(el("p", { class: "cardpay__wallethint" },
+        " Apple&nbsp;Pay and Google&nbsp;Pay appear automatically on supported phones &amp; browsers (Safari on iPhone/Mac; Chrome on Android) when the site is live over HTTPS."));
       return true;
     }
     // Stripe Buy Button (embedded)
