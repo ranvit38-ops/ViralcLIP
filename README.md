@@ -62,15 +62,6 @@ in your Donorbox campaign: **app.donorbox.org → your campaign → Edit → Set
 enable multiple currencies** (set ₹ INR as the base). Donorbox then shows a
 currency selector and handles the conversion.
 
-### "Thank you" after donating
-A branded **`thank-you.html`** page is included. To greet donors after they give:
-**Donorbox → your campaign → Edit → Receipts/Settings → "Redirect to your own page
-after a successful donation"** and paste the URL of `thank-you.html` (e.g.
-`https://yoursite/thank-you.html`). The site also shows a thank-you pop-up if a
-donor returns to `index.html?donated=1` (or `#thanks`) — handy if you prefer
-redirecting to the home page. Donorbox also emails every donor an automatic
-receipt + thank-you, which you can customise in its dashboard.
-
 ### Other options (optional)
 The same `payments` block also supports a **Stripe Payment Link**
 (`stripePaymentLink`), a **Stripe Buy Button**, or **PayPal** (`paypalHandle`) —
@@ -156,7 +147,6 @@ note: private repos need a paid plan, so make the repo public or use Netlify),
 
 ```
 index.html              👈 THE WEBSITE — open this. Self-contained; edit the config block to set the Donorbox URL.
-thank-you.html          Branded "thank you" page shown after a donation (set as Donorbox redirect).
 assets/video/           The foundation's videos (compressed for the web)
 assets/img/             Poster images + favicon
 index.src.html          Source template used to build index.html (for developers)

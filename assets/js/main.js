@@ -130,29 +130,6 @@
     box.innerHTML = list.map(function (c) { return '<span class="cur-chip">' + escapeHtml(c) + "</span>"; }).join("");
   }
 
-  /* ---------- Thank-you message after donating ----------
-     Shown when a donor returns with ?donated=1 (or #thanks). Set your
-     Donorbox campaign's "redirect after donation" to thank-you.html, or to
-     this page with ?donated=1, to greet donors here. */
-  function wireThankYou() {
-    var overlay = $("#thanksOverlay"); if (!overlay) return;
-    var show = /[?&]donated=1\b/.test(location.search) || location.hash === "#thanks";
-    var open = function () {
-      overlay.hidden = false; document.body.style.overflow = "hidden";
-      var btn = $("#thanksClose"); if (btn) btn.focus();
-    };
-    var close = function () {
-      overlay.hidden = true; document.body.style.overflow = "";
-      if (location.hash === "#thanks" || /donated=1/.test(location.search)) {
-        history.replaceState(null, "", location.pathname);
-      }
-    };
-    if (show) open();
-    var c = $("#thanksClose"); if (c) c.addEventListener("click", close);
-    overlay.addEventListener("click", function (e) { if (e.target === overlay) close(); });
-    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !overlay.hidden) close(); });
-  }
-
   /* ---------- Populate text from config ---------- */
   function hydrate() {
     var tel = (cfg.phone || "").replace(/\s+/g, "");
@@ -244,7 +221,6 @@
     renderImpact();
     renderCurrencies();
     hydrate();
-    wireThankYou();
     wireScroll();
     wireReveal();
     wireCounters();

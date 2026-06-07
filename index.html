@@ -204,19 +204,6 @@ em{font-style:italic;color:var(--gold-500)}
 .cur-chip{font-size:.82rem;font-weight:700;color:#fff;background:rgba(255,255,255,.1);
   border:1px solid rgba(255,255,255,.22);border-radius:100px;padding:.34em .8em}
 
-/* Thank-you overlay */
-.thanks{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:5vw;
-  background:rgba(7,38,28,.62);backdrop-filter:blur(6px);animation:thanksfade .35s var(--ease)}
-@keyframes thanksfade{from{opacity:0}to{opacity:1}}
-.thanks__card{background:var(--cream);border-radius:var(--radius-lg);max-width:460px;width:100%;
-  padding:clamp(1.8rem,5vw,2.8rem);text-align:center;box-shadow:var(--shadow-lg);
-  border-top:6px solid var(--gold-500);animation:thankspop .45s var(--ease)}
-@keyframes thankspop{from{transform:translateY(16px) scale(.97);opacity:0}to{transform:none;opacity:1}}
-.thanks__emoji{font-size:3rem;line-height:1;margin-bottom:.4rem}
-.thanks__card h2{font-size:clamp(1.6rem,4vw,2.1rem);color:var(--green-700);margin-bottom:.6rem}
-.thanks__card p{color:var(--ink-soft);margin:0 0 1.6rem}
-.thanks__card .btn{width:100%}
-
 .card{background:var(--white);color:var(--ink);border-radius:var(--radius-lg);
   padding:clamp(1.4rem,3vw,2.2rem);box-shadow:var(--shadow-lg)}
 .card__head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;margin-bottom:1.1rem;flex-wrap:wrap}
@@ -595,16 +582,6 @@ em{font-style:italic;color:var(--gold-500)}
   <!-- Sticky mobile donate bar -->
   <a href="#donate" class="sticky-donate" id="stickyDonate">Donate now →</a>
 
-  <!-- Thank-you message shown after a donation (Donorbox redirect / ?donated=1 / #thanks) -->
-  <div class="thanks" id="thanksOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="thanksTitle">
-    <div class="thanks__card">
-      <div class="thanks__emoji" aria-hidden="true">💚</div>
-      <h2 id="thanksTitle">Thank you for your kindness</h2>
-      <p>Your gift will warm a meal, ease a worry, and remind an elder that they are loved and not forgotten. From everyone at the Ready&nbsp;To&nbsp;Serve Foundation — and the elders who call our home theirs — <strong>thank you</strong>. 🙏</p>
-      <button class="btn btn--primary" id="thanksClose" type="button">You're welcome 💚</button>
-    </div>
-  </div>
-
   <!-- ============================================================
        EDIT YOUR CHARITY / PAYMENT DETAILS IN THE BLOCK BELOW.
        Donations are handled by your Donorbox campaign (donorboxUrl).
@@ -807,29 +784,6 @@ window.RTS_CONFIG = {
     box.innerHTML = list.map(function (c) { return '<span class="cur-chip">' + escapeHtml(c) + "</span>"; }).join("");
   }
 
-  /* ---------- Thank-you message after donating ----------
-     Shown when a donor returns with ?donated=1 (or #thanks). Set your
-     Donorbox campaign's "redirect after donation" to thank-you.html, or to
-     this page with ?donated=1, to greet donors here. */
-  function wireThankYou() {
-    var overlay = $("#thanksOverlay"); if (!overlay) return;
-    var show = /[?&]donated=1\b/.test(location.search) || location.hash === "#thanks";
-    var open = function () {
-      overlay.hidden = false; document.body.style.overflow = "hidden";
-      var btn = $("#thanksClose"); if (btn) btn.focus();
-    };
-    var close = function () {
-      overlay.hidden = true; document.body.style.overflow = "";
-      if (location.hash === "#thanks" || /donated=1/.test(location.search)) {
-        history.replaceState(null, "", location.pathname);
-      }
-    };
-    if (show) open();
-    var c = $("#thanksClose"); if (c) c.addEventListener("click", close);
-    overlay.addEventListener("click", function (e) { if (e.target === overlay) close(); });
-    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !overlay.hidden) close(); });
-  }
-
   /* ---------- Populate text from config ---------- */
   function hydrate() {
     var tel = (cfg.phone || "").replace(/\s+/g, "");
@@ -921,7 +875,6 @@ window.RTS_CONFIG = {
     renderImpact();
     renderCurrencies();
     hydrate();
-    wireThankYou();
     wireScroll();
     wireReveal();
     wireCounters();
