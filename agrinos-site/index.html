@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agrinos | Biological Crop Inputs for a Sustainable Harvest</title>
+<meta name="description" content="Agrinos delivers proprietary High Yield Technology (HYT) biologicals that improve crop yield, quality and soil health worldwide.">
+
+<!--
+======================================================================
+ EDIT BLOCK — change these values, nothing else needs touching.
+======================================================================
+-->
+<script>
+const CONFIG = {
+  brand: {
+    name: "Agrinos",
+    tagline: "Innovative by nature",
+    phone: "(888) 706-9505",
+    address: "1212 Corporate Dr #470, Irving, TX 75038",
+    website: "http://www.agrinos.com"
+  },
+  // Paste a Stripe Payment Link (dashboard.stripe.com -> Payment Links) for
+  // paid services such as a soil-health consultation deposit or product order.
+  // Leave blank to show a "coming soon" state instead of a broken button.
+  stripePaymentLink: "",
+  // Paste a Calendly (or any scheduling tool) booking page URL to let leads
+  // book an agronomy consultation call directly.
+  calendlyUrl: "",
+  // Where the contact form should deliver messages. Uses Formspree
+  // (formspree.io) — free tier forwards submissions straight to this inbox,
+  // no backend needed. Replace YOUR_FORM_ID after creating a free form there.
+  formspreeEndpoint: "https://formspree.io/f/YOUR_FORM_ID",
+  contactEmail: "sales@agrinos.com"
+};
+</script>
+<!-- ===================================================================== -->
+
+<style>
+  :root{
+    --green:#1b5e3a; --green-dark:#123d26; --gold:#c79a3c; --cream:#f7f4ec; --ink:#1f2620;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Georgia,'Times New Roman',serif;color:var(--ink);background:var(--cream);line-height:1.6}
+  h1,h2,h3{font-family:Arial,Helvetica,sans-serif;color:var(--green-dark);margin:0 0 .5em}
+  a{color:var(--green)}
+  header{background:var(--green-dark);color:#fff;padding:1.2rem 5%;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+  header .brand{font-family:Arial,sans-serif;font-weight:bold;font-size:1.4rem;letter-spacing:.5px}
+  nav a{color:#fff;text-decoration:none;margin-left:1.5rem;font-family:Arial,sans-serif;font-size:.95rem}
+  nav a:hover{color:var(--gold)}
+  .hero{background:linear-gradient(135deg,var(--green) 0%,var(--green-dark) 100%);color:#fff;padding:5rem 5% 4rem;text-align:center}
+  .hero h1{color:#fff;font-size:2.6rem;max-width:800px;margin:0 auto .6em}
+  .hero p{max-width:640px;margin:0 auto 2rem;font-size:1.15rem;opacity:.95}
+  .btn{display:inline-block;background:var(--gold);color:var(--green-dark);padding:.8rem 1.8rem;border-radius:6px;text-decoration:none;font-family:Arial,sans-serif;font-weight:bold;border:none;cursor:pointer;font-size:1rem}
+  .btn:hover{background:#dab14e}
+  .btn.outline{background:transparent;border:2px solid #fff;color:#fff}
+  section{padding:4rem 5%;max-width:1000px;margin:0 auto}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;margin-top:2rem}
+  .card{background:#fff;border-radius:10px;padding:1.6rem;box-shadow:0 2px 10px rgba(0,0,0,.06);border-top:4px solid var(--gold)}
+  .card h3{font-size:1.1rem}
+  .alt{background:#fff}
+  .booking, .contact-wrap{background:#fff;border-radius:12px;padding:2.5rem;box-shadow:0 2px 14px rgba(0,0,0,.07)}
+  iframe.calendly{width:100%;height:680px;border:0;border-radius:8px}
+  .placeholder-box{border:2px dashed #c9c2a8;border-radius:10px;padding:2rem;text-align:center;color:#6b6450;font-family:Arial,sans-serif}
+  form{display:grid;gap:1rem;max-width:560px;font-family:Arial,sans-serif}
+  input,textarea{padding:.8rem;border:1px solid #ccc4a8;border-radius:6px;font-family:Arial,sans-serif;font-size:1rem}
+  label{font-weight:bold;font-size:.9rem;font-family:Arial,sans-serif}
+  footer{background:var(--green-dark);color:#d8e3da;padding:2.5rem 5%;text-align:center;font-family:Arial,sans-serif;font-size:.9rem}
+  .pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1.5rem;margin-top:2rem}
+  .price-card{background:#fff;border-radius:10px;padding:1.8rem;box-shadow:0 2px 10px rgba(0,0,0,.06);text-align:center}
+  .price-card .price{font-size:2rem;color:var(--green);font-family:Arial,sans-serif;font-weight:bold;margin:.4rem 0}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand" id="brandName"></div>
+  <nav>
+    <a href="#about">About</a>
+    <a href="#solutions">Solutions</a>
+    <a href="#booking">Book a Call</a>
+    <a href="#contact">Contact</a>
+  </nav>
+</header>
+
+<section class="hero">
+  <h1>Improving Crop Yield &amp; Soil Health, Worldwide</h1>
+  <p>Agrinos' proprietary High Yield Technology (HYT®) platform delivers biological crop inputs that boost productivity, quality and sustainability — for a growing world that needs all three.</p>
+  <a href="#booking" class="btn">Book a Free Agronomy Consultation</a>
+  <a href="#solutions" class="btn outline" style="margin-left:1rem">See Our Solutions</a>
+</section>
+
+<section id="about">
+  <h2>About Agrinos</h2>
+  <p>Agrinos, an American Vanguard Company, is a biological crop input provider committed to improving the productivity and sustainability of modern agriculture worldwide. Our products help farmers by providing increased crop yield and productivity, improved crop quality, enhanced efficiency of conventional fertilizer, and a reduced environmental footprint.</p>
+  <p>As world population grows and natural resources become increasingly strained, we need innovative, sustainable solutions that increase agricultural output, reduce inputs, and ensure a safe, reliable food supply for all. As a worldwide leader in crop biologicals, Agrinos is proud to help meet that challenge.</p>
+  <div class="grid">
+    <div class="card"><h3>Founded</h3><p>2009 · Davis, California</p></div>
+    <div class="card"><h3>Team</h3><p>51–200 employees worldwide</p></div>
+    <div class="card"><h3>Focus</h3><p>Biostimulants, microbials, soil health &amp; agronomy R&amp;D</p></div>
+  </div>
+</section>
+
+<section id="solutions" class="alt">
+  <h2>Our Solutions</h2>
+  <p>Built on the HYT® platform, our research and agronomy team develops products that improve the health of the soil microbiome — the critical foundation crops need to reach their full potential.</p>
+  <div class="grid">
+    <div class="card"><h3>Biostimulants</h3><p>Improve nutrient uptake and crop resilience across diverse environments.</p></div>
+    <div class="card"><h3>Microbials</h3><p>Restore and enrich the soil microbiome for long-term soil health.</p></div>
+    <div class="card"><h3>Yield &amp; Quality Programs</h3><p>Field-proven programs that increase yield and quality across diverse crops.</p></div>
+    <div class="card"><h3>Agronomy Support</h3><p>Direct access to our agronomy team for program design and field support.</p></div>
+  </div>
+
+  <div class="pricing-grid">
+    <div class="price-card">
+      <h3>Field Trial Program</h3>
+      <div class="price">Free</div>
+      <p>Pilot an HYT® product on a small plot with agronomist support.</p>
+    </div>
+    <div class="price-card">
+      <h3>Seasonal Program</h3>
+      <div class="price">Custom Quote</div>
+      <p>Full-season biological program tailored to your crop and acreage.</p>
+    </div>
+    <div class="price-card">
+      <h3>Dedicated Agronomy Support</h3>
+      <div class="price">Custom Quote</div>
+      <p>Ongoing agronomist relationship with seasonal check-ins and reporting.</p>
+    </div>
+  </div>
+
+  <div id="stripe-area" style="margin-top:2.5rem"></div>
+</section>
+
+<section id="booking">
+  <h2>Book a Consultation</h2>
+  <p>Talk to one of our agronomists about which program fits your crop, soil and region.</p>
+  <div class="booking" id="booking-area"></div>
+</section>
+
+<section id="contact" class="alt">
+  <h2>Contact Us</h2>
+  <div class="contact-wrap">
+    <p><strong>Phone:</strong> <span id="phoneText"></span><br>
+       <strong>Address:</strong> <span id="addressText"></span></p>
+    <form id="contactForm" action="" method="POST">
+      <label for="name">Name</label>
+      <input id="name" name="name" required>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required>
+      <label for="message">Message</label>
+      <textarea id="message" name="message" rows="5" required></textarea>
+      <button class="btn" type="submit">Send Message</button>
+    </form>
+    <p id="contactFallback" style="display:none;font-family:Arial,sans-serif">
+      Or email us directly at <a id="mailtoLink" href="#"></a>
+    </p>
+  </div>
+</section>
+
+<footer>
+  <p id="footerBrand"></p>
+  <p>&copy; <span id="year"></span> Agrinos. All rights reserved.</p>
+</footer>
+
+<script>
+(function(){
+  document.getElementById('brandName').textContent = CONFIG.brand.name + " — " + CONFIG.brand.tagline;
+  document.getElementById('footerBrand').textContent = CONFIG.brand.name;
+  document.getElementById('phoneText').textContent = CONFIG.brand.phone;
+  document.getElementById('addressText').textContent = CONFIG.brand.address;
+  document.getElementById('year').textContent = new Date().getFullYear();
+
+  // --- Stripe area ---
+  var stripeArea = document.getElementById('stripe-area');
+  if (CONFIG.stripePaymentLink) {
+    stripeArea.innerHTML = '<a class="btn" href="' + CONFIG.stripePaymentLink + '" target="_blank" rel="noopener noreferrer">Reserve a Seasonal Program Slot — Pay Deposit</a>';
+  } else {
+    stripeArea.innerHTML = '<div class="placeholder-box">Online payment is ready to switch on — paste a Stripe Payment Link in the CONFIG block (stripePaymentLink) to accept deposits/orders here.</div>';
+  }
+
+  // --- Booking area ---
+  var bookingArea = document.getElementById('booking-area');
+  if (CONFIG.calendlyUrl) {
+    bookingArea.innerHTML = '<iframe class="calendly" src="' + CONFIG.calendlyUrl + '"></iframe>';
+  } else {
+    bookingArea.innerHTML = '<div class="placeholder-box">Booking calendar is ready to switch on — paste a Calendly (or similar) URL in the CONFIG block (calendlyUrl) to let leads book a call here.</div>';
+  }
+
+  // --- Contact form ---
+  var form = document.getElementById('contactForm');
+  var fallback = document.getElementById('contactFallback');
+  var mailto = document.getElementById('mailtoLink');
+  mailto.href = 'mailto:' + CONFIG.contactEmail;
+  mailto.textContent = CONFIG.contactEmail;
+
+  if (CONFIG.formspreeEndpoint && CONFIG.formspreeEndpoint.indexOf('YOUR_FORM_ID') === -1) {
+    form.action = CONFIG.formspreeEndpoint;
+  } else {
+    // No live email backend configured yet: fall back to a mailto draft so
+    // the message still reaches an inbox instead of silently failing.
+    form.addEventListener('submit', function(e){
+      e.preventDefault();
+      var name = document.getElementById('name').value;
+      var email = document.getElementById('email').value;
+      var message = document.getElementById('message').value;
+      var body = encodeURIComponent('Name: ' + name + '\nEmail: ' + email + '\n\n' + message);
+      window.location.href = 'mailto:' + CONFIG.contactEmail + '?subject=Website%20Inquiry&body=' + body;
+    });
+    fallback.style.display = 'block';
+  }
+})();
+</script>
+
+</body>
+</html>
