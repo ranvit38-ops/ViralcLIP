@@ -55,7 +55,8 @@ def test_end_to_end_analyze_and_render():
 
     tr = c.get(f"/api/projects/{pid}/transcript").json()
     assert "mistake" in tr["text"].lower() and tr["language"] == "en"
-    assert len(tr["segments"]) >= 8 and all(s["end"] - s["start"] < 15 for s in tr["segments"])  # sentence rows
+    # sentence-level segments (batched Whisper returns ~30 s chunks; they must be regrouped)
+    assert len(tr["segments"]) >= 8 and max(s["end"] - s["start"] for s in tr["segments"]) < 15
 
     clips = c.get(f"/api/clips?project_id={pid}").json()
     assert 1 <= len(clips) <= 3
@@ -133,6 +134,9 @@ def test_crop_track_is_stable():
     expr = pipeline._crop_x_expr(track, 1920, 606)
     assert expr.startswith("if(lt(t,5.00),") and "," in expr
     assert pipeline.crop_track([(0, None, 0)]) == [(0.0, 0.5)]
+    # with the crop-relative threshold used for 9:16, a 7% drift re-frames instead of leaving the face off-center
+    drift = [(i * 0.5, 0.5, 0.3) for i in range(4)] + [(2 + i * 0.5, 0.57, 0.3) for i in range(4)]
+    assert len(pipeline.crop_track(drift, min_shift=0.15 * 606 / 1920)) == 2 and len(pipeline.crop_track(drift)) == 1
 
 
 def test_ass_captions_highlight_each_word():

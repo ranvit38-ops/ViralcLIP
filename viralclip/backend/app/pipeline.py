@@ -101,7 +101,9 @@ def transcribe(audio: np.ndarray, model: str, language: str | None, ctx: Ctx, lo
                     "words": [{"start": round(w.start, 2), "end": round(w.end, 2), "word": w.word,
                                "probability": round(w.probability, 3)} for w in (s.words or [])]})
         ctx.progress(lo + (hi - lo) * min(1.0, s.end / max(duration, 1)), f"Transcribing… {int(s.end // 60)}:{int(s.end % 60):02d}")
-    return out, info.language
+    # The batched pipeline returns ~30 s chunks; regroup into sentences so the transcript viewer can seek
+    # to a sentence and speech coverage (used for the gameplay fallback) excludes long silences.
+    return [{**x, "start": round(x["start"], 2), "end": round(x["end"], 2)} for x in selection.sentences(out)], info.language
 
 
 # ---------------------------------------------------------------- analyze
@@ -535,7 +537,8 @@ def _render(ctx, src, pid, cid, start, end, sw, sh, fps, st, segments, overrides
             if layout == "stream" and not cam:
                 layout = "fit"  # asked for split screen but no facecam found
             if layout == "crop":
-                track = [(remap(t, keep), x) for t, x in crop_track(samples)]
+                # Re-frame once the face drifts ~15% of the *output* width (a 9:16 crop is ~1/3 of the source).
+                track = [(remap(t, keep), x) for t, x in crop_track(samples, min_shift=max(0.04, 0.15 * crop_w / sw))]
     elif layout in ("auto", "stream"):
         layout = "fit" if abs(src_ar - dst_ar) > 0.01 else "crop"
 
