@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Clapperboard, Film, LayoutDashboard, ListVideo, LogOut, Menu, MonitorPlay, Plus, Settings, X } from "lucide-react";
+import { Bot, CalendarDays, Clapperboard, Film, LayoutDashboard, ListVideo, LogOut, Menu, MonitorPlay, Plus, Settings, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -12,6 +12,7 @@ const NAV = [
   { href: "/projects/new", label: "Create Project", icon: Plus },
   { href: "/projects", label: "My Videos", icon: Film },
   { href: "/clips", label: "Generated Clips", icon: Clapperboard },
+  { href: "/automation", label: "Automation", icon: Bot },
   { href: "/youtube", label: "YouTube Studio", icon: MonitorPlay },
   { href: "/calendar", label: "Publishing Calendar", icon: CalendarDays },
   { href: "/queue", label: "Upload Queue", icon: ListVideo },

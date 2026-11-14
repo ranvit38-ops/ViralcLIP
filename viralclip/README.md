@@ -6,6 +6,7 @@ No subscriptions, credits or watermarks. Everything runs on your machine.
 - Status of every feature: `DEVELOPMENT_STATUS.md`
 - Design: `ARCHITECTURE.md`
 - YouTube setup: `docs/YOUTUBE_SETUP.md`
+- Twitch setup: `docs/TWITCH_SETUP.md`
 
 **You are responsible for having the rights to everything you upload, edit and publish.** YouTube link import only accepts videos from channels you've connected.
 
@@ -19,10 +20,16 @@ No subscriptions, credits or watermarks. Everything runs on your machine.
    - An optional local LLM re-ranks the candidates and writes titles, descriptions and hashtags.
 3. **Review**: approve or reject, trim, change framing and caption style, and edit captions and metadata.
 4. **Render**:
-   - Talking heads get a face-tracked 9:16 crop. Gameplay and screen recordings get the full frame on a blurred background.
+   - Talking heads get a face-tracked 9:16 crop with punch-in zooms.
+   - Streams with a facecam get a split screen: facecam on top, gameplay below.
+   - Gameplay and screen recordings get the full frame on a blurred background.
+   - Jump cuts remove dead air, and a hook title shows for the first 3 seconds.
    - Word-by-word highlighted captions are burned in.
    - Audio is normalized to -14 LUFS, and video is encoded as H.264 CRF 18.
-5. **Publish**: connect one or more YouTube channels. Then upload now, schedule, bulk-schedule (daily, every other day, weekly), or turn on an auto-publish rule. Rules only ever take clips you approved.
+5. **Automate** (optional): connect your Twitch account(s) or YouTube channel(s) in **Automation**.
+   - New streams and videos are imported, clipped, optionally auto-approved, rendered, and handed to the auto-publish rule.
+   - Only your own connected channels can be imported. See `docs/TWITCH_SETUP.md`.
+6. **Publish**: connect one or more YouTube channels. Then upload now, schedule, bulk-schedule (daily, every other day, weekly), or turn on an auto-publish rule. Rules only ever take clips you approved.
 
 ## Quick start (Docker)
 
