@@ -1,6 +1,6 @@
 "use client";
 
-import { Film, LayoutDashboard, LogOut, Menu, Plus, X } from "lucide-react";
+import { CalendarDays, Film, LayoutDashboard, ListVideo, LogOut, Menu, MonitorPlay, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -11,6 +11,9 @@ const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects/new", label: "Create Project", icon: Plus },
   { href: "/projects", label: "My Videos", icon: Film },
+  { href: "/youtube", label: "YouTube Studio", icon: MonitorPlay },
+  { href: "/calendar", label: "Publishing Calendar", icon: CalendarDays },
+  { href: "/queue", label: "Upload Queue", icon: ListVideo },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {

@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from . import auth, projects
+from . import auth, projects, youtube
 from .db import init_db
 
 log = logging.getLogger("viralclip")
@@ -12,6 +12,7 @@ app = FastAPI(title="ViralClip API")
 init_db()
 app.include_router(auth.router)
 app.include_router(projects.router)
+app.include_router(youtube.router)
 
 
 @app.exception_handler(Exception)
