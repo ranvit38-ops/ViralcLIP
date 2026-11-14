@@ -883,7 +883,9 @@ def run_import(job_id: int, ctx) -> None:
             raise
 
     opts = {
-        "format": "bv*[vcodec^=avc1][height<=1080]+ba[ext=m4a]/b[ext=mp4][height<=1080]/bv*[height<=1080]+ba/b",
+        # Highest available quality up to 4K: a 9:16 crop of 1080p is only ~600 px wide, of 4K ~1200 px.
+        # VP9/AV1 are fine; the renderer re-encodes to H.264 anyway.
+        "format": "bv*[height<=2160]+ba/b[height<=2160]/bv*+ba/b",
         "merge_output_format": "mp4", "outtmpl": str(out_dir / "download.%(ext)s"), "noplaylist": True,
         "quiet": True, "no_warnings": True, "noprogress": True, "progress_hooks": [hook],
     }
