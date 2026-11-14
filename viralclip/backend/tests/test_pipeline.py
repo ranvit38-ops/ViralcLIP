@@ -151,3 +151,18 @@ def test_loudness_fallback_for_gameplay():
     clips = selection.select_clips([], 120, 15, 30, 2, loud)
     assert len(clips) == 1 and clips[0]["method"] == "loudness" and clips[0]["start"] <= 80 <= clips[0]["end"]
     assert selection.select_clips([], 120, 15, 30, 2, [0.1] * 120) == []  # flat audio: nothing worth clipping
+
+
+def test_llm_output_is_sanitized(monkeypatch):
+    from app import llm
+    monkeypatch.setenv("LLM_BASE_URL", "http://x/v1")
+    monkeypatch.setenv("LLM_MODEL", "m")
+    monkeypatch.setattr(llm, "chat_json", lambda s, u, timeout=180: {
+        "titles": ["<title 1>", "?Why savings fail", "为什么储蓄失败", "Start small today"],
+        "description": "A clip.", "hashtags": ["#Money Tips", "money tips", "saving", "#"]})
+    m = llm.generate_metadata("Here is the biggest mistake people make with savings. Start small.", {"hashtag_count": 4}, "en")
+    assert m["titles"][:2] == ["Why savings fail", "Start small today"]
+    assert all("<" not in t and not llm.CJK.search(t) for t in m["titles"])
+    assert m["hashtags"][:2] == ["moneytips", "saving"] and len(m["hashtags"]) <= 4
+    monkeypatch.setattr(llm, "chat_json", lambda *a, **k: (_ for _ in ()).throw(TimeoutError()))
+    assert llm.generate_metadata("Some clip text that is long enough here.", {}, "en")["method"] == "basic"

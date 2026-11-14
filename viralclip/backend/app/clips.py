@@ -255,7 +255,9 @@ class MetaIn(BaseModel):
 def regenerate_metadata(cid: int, body: MetaIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     from .pipeline import apply_metadata
     c = owned_clip(db, user, cid)
-    apply_metadata(c, llm.generate_metadata(c.transcript_excerpt, (user.settings or {}).get("metadata") or {}), set(body.fields))
+    tr = db.scalar(select(Transcript).where(Transcript.project_id == c.project_id))
+    apply_metadata(c, llm.generate_metadata(c.transcript_excerpt, (user.settings or {}).get("metadata") or {},
+                                            tr.language if tr else None), set(body.fields))
     db.commit()
     return clip_out(c, db)
 

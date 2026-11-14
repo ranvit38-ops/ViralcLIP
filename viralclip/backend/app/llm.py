@@ -16,7 +16,14 @@ STOP = set("""a an the and or but if so of to in on at by for with from as is ar
 this that these those i you he she we they me him her us them my your his our their what which who whom when where
 why how not no do does did done have has had just very really can could would should will shall may might must
 about into over than then there here also only even more most some any all each every one two out up down off
-gonna wanna yeah okay like know think get got going go thing things lot much many well right said says say""".split())
+gonna wanna yeah okay like know think get got going go thing things lot much many well right said says say
+because never always wait still just maybe sure actually basically literally really pretty kind sort want wants
+make makes made take takes took come comes came give gives gave keep keeps look looks need needs feel feels tell
+told mean means call calls back away again ever every everything something nothing anything someone everyone
+today week weeks time times year years minute minutes left first last next other another same different
+little whole single instead start started stop stopped happen happened point points while since until
+good great better best worse worst most least does doing being having been would could should these those""".split())
+LEADERS = re.compile(r"^(so|and|but|okay|ok|anyway|well|now|alright|right|because|also|then|like)\b[,\s]*", re.I)
 
 
 def configured() -> bool:
@@ -79,29 +86,56 @@ def _clean_tag(t: str) -> str:
 
 
 def _keywords(text: str, n: int) -> list[str]:
-    words = [w for w in re.findall(r"[a-zA-Z][a-zA-Z']{3,}", text.lower()) if w not in STOP]
+    words = [w for w in re.findall(r"[a-zA-Z][a-zA-Z]{3,}", text.lower()) if w not in STOP]
     return [w for w, _ in Counter(words).most_common(n)]
 
 
 def basic_metadata(text: str, prefs: dict) -> dict:
+    """No-LLM fallback: titles are the clip's own strongest lines, cleaned up. Honest but plain."""
+    from .selection import HOOK_WORDS, OFFTOPIC
     sents = [s.strip() for s in re.split(r"(?<=[.?!])\s+", text) if s.strip()]
-    titles = []
-    q = next((s for s in sents if s.endswith("?")), None)
-    if q:
-        titles.append(q)
-    titles += [s for s in sents[:3] if s != q]
-    titles = [t[:95].rstrip(" ,.") for t in titles if len(t) > 12][:4] or [text[:80]]
+
+    def clean(s):
+        s = LEADERS.sub("", s).strip()
+        return s[:1].upper() + s[1:] if s else s
+
+    def rank(s):
+        w = set(re.findall(r"[a-z']+", s.lower()))
+        needs_context = w & {"instead", "it", "they", "this", "that", "he", "she", "them", "there"}
+        return (s.endswith("?")) * 2 + len(w & HOOK_WORDS) + ({"you", "your"} & w != set()) \
+            - (len(s) > 90) * 2 - len(needs_context) * 2
+
+    usable = [clean(s) for s in sents if not OFFTOPIC.search(s) and 5 <= len(s.split()) <= 16]
+    titles = sorted(dict.fromkeys(t.rstrip(" ,.") for t in usable), key=rank, reverse=True)[:4]
+    titles = titles or [clean(text[:80]).rstrip(" ,.")]
     n = int(prefs.get("hashtag_count") or 5)
     tags = _keywords(text, max(1, n - 1)) + ["shorts"]
     desc_len = prefs.get("description_length", "short")
-    desc = " ".join(sents[: 2 if desc_len == "short" else 4])
+    desc = " ".join(clean(s) if i == 0 else s for i, s in enumerate(
+        [s for s in sents if not OFFTOPIC.search(s)][: 2 if desc_len == "short" else 4]))
     return {"titles": titles, "description": desc, "hashtags": tags[:n], "method": "basic"}
 
 
-def generate_metadata(text: str, prefs: dict) -> dict:
+CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
+LANG_NAMES = {"en": "English", "es": "Spanish", "fr": "French", "de": "German", "pt": "Portuguese", "it": "Italian",
+              "hi": "Hindi", "ja": "Japanese", "ko": "Korean", "zh": "Chinese", "ru": "Russian", "ar": "Arabic",
+              "nl": "Dutch", "tr": "Turkish", "pl": "Polish", "id": "Indonesian", "vi": "Vietnamese"}
+
+
+def _usable_title(t: str, lang: str | None) -> bool:
+    if not t or re.search(r"<[^>]*>|\btitle \d\b", t, re.I):  # echoed template placeholders
+        return False
+    if lang and lang not in ("zh", "ja", "ko") and CJK.search(t):  # small models drift into other scripts
+        return False
+    return True
+
+
+def generate_metadata(text: str, prefs: dict, language: str | None = None) -> dict:
     """Return {titles, description, hashtags, method}. Uses the LLM when configured."""
     if not configured():
         return basic_metadata(text, prefs)
+    lang = prefs.get("language") or language
+    lang_name = LANG_NAMES.get(lang or "", lang or "the same language as the transcript")
     n = int(prefs.get("hashtag_count") or 5)
     system = (
         "You write YouTube Shorts metadata for a clip, using ONLY what the transcript says. "
@@ -109,16 +143,20 @@ def generate_metadata(text: str, prefs: dict) -> dict:
         "at most one ! or ? per title, titles under 70 characters. "
         f"Title style preference: {prefs.get('title_style', 'mixed: curiosity, educational, question, direct')}. "
         f"Tone: {prefs.get('tone', 'natural')}. Audience: {prefs.get('audience', 'general')}. "
-        f"Category: {prefs.get('category', 'auto-detect')}. Language: {prefs.get('language', 'same as transcript')}. "
+        f"Category: {prefs.get('category', 'auto-detect')}. Write everything in {lang_name} only. "
+        "Refer to the speaker neutrally; never assume their gender. "
         f"Description: {'1-2' if prefs.get('description_length', 'short') == 'short' else '3-5'} sentences, natural keywords, no hashtags. "
         f"Hashtags: exactly {n}, specific to the subject, no generic spam, no '#' prefix. "
-        'Give exactly 4 titles in different styles. '
-        'Reply JSON: {"titles":["<title 1>","<title 2>","<title 3>","<title 4>"],"description":"...","hashtags":["<tag>", ...]}')
+        'Give exactly 4 different titles in different styles. Reply with a JSON object with keys '
+        '"titles" (array of 4 strings), "description" (string) and "hashtags" (array of strings).')
     try:
         out = chat_json(system, f"Transcript of the clip:\n{text[:4000]}")
-        titles = [re.sub(r"\s+", " ", str(t)).strip().strip('"')[:100] for t in out.get("titles", []) if str(t).strip()]
+        titles = [re.sub(r"\s+", " ", str(t)).strip().strip('"').lstrip("?!.,:;-–— ")[:100] for t in out.get("titles", [])]
+        titles = [t for t in titles if _usable_title(t, lang)]
         tags = list(dict.fromkeys(t for t in (_clean_tag(h) for h in out.get("hashtags", [])) if t))[:max(n, 3)]
         desc = str(out.get("description", "")).strip()[:4500]
+        if lang and lang not in ("zh", "ja", "ko") and CJK.search(desc):
+            desc = ""
         if not titles:
             raise ValueError("no titles")
         # Small local models often return fewer items than asked; top up from the transcript.

@@ -168,7 +168,7 @@ def analyze(job_id: int, ctx: Ctx):
         with SessionLocal() as db:
             for i, c in enumerate(chosen):
                 ctx.progress(0.88 + 0.1 * i / len(chosen), f"Writing titles and hashtags ({i + 1}/{len(chosen)})")
-                m = llm.generate_metadata(c["text"], meta_prefs) if c["text"] else \
+                m = llm.generate_metadata(c["text"], meta_prefs, language) if c["text"] else \
                     {"titles": [], "description": "", "hashtags": [], "method": "none"}
                 db.add(Clip(project_id=p.id, start=c["start"], end=c["end"], transcript_excerpt=c["text"],
                             score=c["score"], score_breakdown={**c["breakdown"], "method": c["method"],
@@ -201,9 +201,10 @@ def metadata(job_id: int, ctx: Ctx):
             q = q.where(Clip.id.in_(job.params["clip_ids"]))
         clips = db.scalars(q).all()
         fields = set(job.params.get("fields") or ["titles", "description", "hashtags"])
+        tr = db.scalar(select(Transcript).where(Transcript.project_id == p.id))
         for i, c in enumerate(clips):
             ctx.progress(i / max(1, len(clips)), f"Clip {i + 1}/{len(clips)}")
-            apply_metadata(c, llm.generate_metadata(c.transcript_excerpt, prefs), fields)
+            apply_metadata(c, llm.generate_metadata(c.transcript_excerpt, prefs, tr.language if tr else None), fields)
             db.commit()
 
 
