@@ -17,6 +17,8 @@ services:
   worker:
     <<: *backend
     command: ["python", "-m", "app.worker"]
+    deploy:
+      replicas: 2   # one can transcribe a long stream while the other keeps rendering
   web:
     build: ./frontend
     ports: ["3000:3000"]

@@ -72,10 +72,10 @@ PostgreSQL works too: `DATABASE_URL=postgresql+psycopg://user:pass@host/db`. The
 
 | Piece | Default | CPU (4 cores) | Notes |
 |---|---|---|---|
-| Transcription | faster-whisper `small` | ~0.2× real time, so a 2 h video takes ~25 min | `tiny` is ~2× faster and less accurate. `large-v3` is best but needs an NVIDIA GPU to be practical. Set `WHISPER_DEVICE=cuda` (auto-detected). |
+| Transcription | faster-whisper `small`, batched | ~0.1× real time, so a 2 h stream takes ~12 min (measured: 10.5 min in 62 s) | `tiny` is ~2× faster and less accurate. `large-v3` is best but needs an NVIDIA GPU to be practical. Set `WHISPER_DEVICE=cuda` (auto-detected). |
 | Clip scoring | built-in heuristic | instant | Transparent; always on. |
 | Titles / re-ranking | none, or any OpenAI-compatible LLM | 3B model: ~40 s per clip | Use a **7B+ model** (e.g. `qwen2.5:7b-instruct` via Ollama). 3B models invent details and drift languages; the app filters the worst of it, but you must review. |
-| Rendering | ffmpeg libx264 `medium` | ~1× real time for 1080×1920 (measured: 20 s clip in 16 s) | `RENDER_PRESET=fast` for speed, `slow` for size. |
+| Rendering | ffmpeg libx264 `veryfast` CRF 18 | ~0.4–0.5× clip length (measured: 45 s clip in 18 s) | Two workers by default, so renders don't wait behind transcription. |
 
 You don't need a GPU; everything has a CPU path.
 RAM: ~2 GB for `small`, ~5 GB for a 7B LLM, plus about 0.5 GB per hour of source video while it's being transcribed.
