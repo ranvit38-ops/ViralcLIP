@@ -32,8 +32,29 @@ def get_db():
         db.close()
 
 
+def alembic_config():
+    from pathlib import Path
+    from alembic.config import Config
+    cfg = Config()
+    cfg.set_main_option("script_location", str(Path(__file__).parent / "migrations"))
+    return cfg
+
+
 def init_db():
+    """Bring the schema to the latest migration. Safe to call from API and workers at once."""
+    import time
+    from alembic import command
+    from sqlalchemy import inspect
     from . import models  # noqa: F401  (register tables)
-    # ponytail: create_all only adds missing tables; switch to Alembic before the first
-    # release that changes an existing table, or user databases won't upgrade.
-    Base.metadata.create_all(engine)
+    for attempt in range(10):
+        try:
+            insp = inspect(engine)
+            if insp.has_table("users") and not insp.has_table("alembic_version"):
+                command.stamp(alembic_config(), "head")  # DB created before migrations existed
+            else:
+                command.upgrade(alembic_config(), "head")
+            return
+        except Exception:  # another process is migrating at the same moment; let it finish
+            if attempt == 9:
+                raise
+            time.sleep(1 + attempt)
