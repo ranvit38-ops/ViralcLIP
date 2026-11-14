@@ -84,7 +84,9 @@ def test_end_to_end_analyze_and_render():
     vs = next(s for s in info["streams"] if s["codec_type"] == "video")
     assert (vs["width"], vs["height"]) == (1080, 1920) and vs["codec_name"] == "h264"
     assert any(s["codec_type"] == "audio" for s in info["streams"])
-    assert abs(float(info["format"]["duration"]) - got["duration"]) < 0.3
+    rendered = got["render_settings"]["_rendered_duration"]
+    assert abs(float(info["format"]["duration"]) - rendered) < 0.3
+    assert rendered <= got["duration"]  # jump cuts only ever shorten
     assert got["render_settings"]["_rendered_layout"] == "fit"  # no faces in test pattern -> full frame, blurred bg
 
     # regenerating metadata never overwrites an edited title
@@ -166,3 +168,73 @@ def test_llm_output_is_sanitized(monkeypatch):
     assert m["hashtags"][:2] == ["moneytips", "saving"] and len(m["hashtags"]) <= 4
     monkeypatch.setattr(llm, "chat_json", lambda *a, **k: (_ for _ in ()).throw(TimeoutError()))
     assert llm.generate_metadata("Some clip text that is long enough here.", {}, "en")["method"] == "basic"
+
+
+def test_jump_cuts_and_remap():
+    words = [{"start": 0.5, "end": 1.0, "word": "a"}, {"start": 1.1, "end": 1.5, "word": "b"},
+             {"start": 3.5, "end": 4.0, "word": "c."}]
+    keep = pipeline.keep_segments(words, 5.0)
+    assert len(keep) == 2 and keep[0][1] < 2.0 and keep[1][0] > 3.0  # the 2 s pause is cut
+    assert pipeline.remap(0.5, keep) == 0.5  # short lead-in kept
+    assert abs(pipeline.remap(3.5, keep) - (keep[0][1] - keep[0][0] + 0.08)) < 1e-6
+    assert pipeline.remap(2.5, keep) == pytest.approx(pipeline.remap(keep[1][0], keep))  # inside a cut -> snaps forward
+    assert pipeline.keep_segments([], 7.0) == [(0.0, 7.0)]
+
+
+def test_facecam_detection():
+    cam = [(i * 0.5, 0.85, 0.08, 0.8) for i in range(10)]  # small, fixed, bottom-right: facecam
+    box = pipeline.facecam_box(cam, 1920, 1080, 1080 / 768)
+    assert box and box[0] > 1000 and box[1] > 500 and box[0] + box[2] <= 1920 and box[1] + box[3] <= 1080
+    talking = [(i * 0.5, 0.5, 0.3, 0.4) for i in range(10)]  # big face: not a facecam
+    assert pipeline.facecam_box(talking, 1920, 1080, 1.4) is None
+    assert pipeline.facecam_box([(0, None, 0, None)] * 10, 1920, 1080, 1.4) is None
+
+
+class _Ctx:
+    def progress(self, *a, **k):
+        pass
+
+
+def _face_video(name, overlay_filter):
+    import urllib.request
+    face = FIXTURES / "face.jpg"
+    if not face.exists():
+        try:
+            urllib.request.urlretrieve("https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/lena.jpg", face)
+        except OSError:
+            pytest.skip("no network for face fixture")
+    out = FIXTURES / name
+    if not out.exists():
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=6",
+                        "-loop", "1", "-i", str(face), "-f", "lavfi", "-i", "sine=frequency=300:duration=6",
+                        "-filter_complex", overlay_filter, "-map", "[v]", "-map", "2:a", "-t", "6",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", str(out)], check=True)
+    return out
+
+
+def _render_direct(src, layout, monkeypatch, tmp_path):
+    from app import config as cfg
+    monkeypatch.setattr(cfg, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: type("S", (), {
+        "__enter__": lambda s: s, "__exit__": lambda s, *a: None, "get": lambda s, *a: None})())
+    st = pipeline.render_settings(type("C", (), {"render_settings": {"layout": layout}})())
+    words = [{"start": 0.3, "end": 0.8, "word": "Hello"}, {"start": 0.9, "end": 1.4, "word": "there."},
+             {"start": 3.4, "end": 3.9, "word": "Big"}, {"start": 4.0, "end": 4.6, "word": "moment."}]
+    pipeline._render(_Ctx(), src, 1, 1, 0, 6, 1920, 1080, 30, st, [{"words": words}], [], "My hook title", True)
+    return tmp_path / "projects" / "1" / "clips" / "1.mp4"
+
+
+def test_stream_layout_detects_facecam(monkeypatch, tmp_path):
+    src = _face_video("facecam.mp4", "[1:v]scale=-2:300[f];[0:v][f]overlay=x=1560:y=740:shortest=1[v]")
+    out = _render_direct(src, "auto", monkeypatch, tmp_path)
+    info = probe(out)
+    vs = next(s for s in info["streams"] if s["codec_type"] == "video")
+    assert (vs["width"], vs["height"]) == (1080, 1920)
+    assert float(info["format"]["duration"]) < 5.5  # the 2 s pause was cut
+
+
+def test_talking_head_crop_with_zoom(monkeypatch, tmp_path):
+    src = _face_video("talkinghead.mp4", "[1:v]scale=-2:700[f];[0:v][f]overlay=x=700:y=190:shortest=1[v]")
+    out = _render_direct(src, "auto", monkeypatch, tmp_path)
+    vs = next(s for s in probe(out)["streams"] if s["codec_type"] == "video")
+    assert (vs["width"], vs["height"]) == (1080, 1920)

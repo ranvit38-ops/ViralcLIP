@@ -33,7 +33,12 @@ CAPTION_PRESETS = {
                 "outline_width": 3, "shadow": 1, "uppercase": False, "words": 5, "box": False, "pop": False, "bold": False},
 }
 DEFAULT_RENDER = {"aspect": "9:16", "layout": "auto", "crop_x": None, "captions": True, "preset": "bold",
-                  "position": "lower", "style": {}}
+                  "position": "lower", "style": {},
+                  "remove_pauses": True,   # jump cuts: drop silences longer than PAUSE between words
+                  "zoom": True,            # punch-in on alternating sentences (talking-head crops only)
+                  "hook": True,            # title shown in a box for the first HOOK_SECONDS
+                  "hook_text": None}       # None = use the clip title
+PAUSE, HOOK_SECONDS = 0.6, 3.0
 SIZES = {"9:16": (1080, 1920), "1:1": (1080, 1080), "4:5": (1080, 1350), "16:9": (1920, 1080)}
 
 
@@ -223,7 +228,7 @@ def apply_metadata(c: Clip, m: dict, fields: set):
 # ---------------------------------------------------------------- reframing
 
 def _faces(src: Path, start: float, dur: float, w: int, h: int, fps: float = 2.0):
-    """Largest face per sampled frame -> [(t, cx_fraction, face_h_fraction) | (t, None, 0)]."""
+    """Largest face per sampled frame -> [(t, cx, face_h, cy) as fractions | (t, None, 0, None)]."""
     import cv2
     sw = 480
     sh = int(round(h * sw / w / 2) * 2)
@@ -239,9 +244,9 @@ def _faces(src: Path, start: float, dur: float, w: int, h: int, fps: float = 2.0
         faces = det.detectMultiScale(f, scaleFactor=1.1, minNeighbors=6, minSize=(sh // 12, sh // 12))
         if len(faces):
             x, y, fw, fh = max(faces, key=lambda b: b[2] * b[3])
-            out.append((i / fps, (x + fw / 2) / sw, fh / sh))
+            out.append((i / fps, (x + fw / 2) / sw, fh / sh, (y + fh / 2) / sh))
         else:
-            out.append((i / fps, None, 0.0))
+            out.append((i / fps, None, 0.0, None))
     return out
 
 
@@ -249,7 +254,7 @@ def crop_track(samples, min_shift: float = 0.12, hold: int = 2) -> list[tuple[fl
     """Turn noisy face centers into a few stable camera positions: only move when the subject
     has clearly moved (> min_shift of frame width) for `hold` consecutive samples.
     ponytail: hard cuts between positions; add eased pans if hard cuts look jarring."""
-    seen = [(t, x) for t, x, _ in samples if x is not None]
+    seen = [(t, x) for t, x, *_ in samples if x is not None]
     if not seen:
         return [(0.0, 0.5)]
     track = [(0.0, float(np.median([x for _, x in seen[:4]])))]
@@ -325,11 +330,14 @@ def lines_from_overrides(overrides: list[dict]) -> list[dict]:
     return out
 
 
-def build_ass(lines: list[dict], W: int, H: int, st: dict, position: str) -> str:
-    align, margin_v = {"top": (8, int(H * 0.12)), "middle": (5, 0), "lower": (2, int(H * 0.24)),
-                       "bottom": (2, int(H * 0.08))}.get(position, (2, int(H * 0.24)))
+def build_ass(lines: list[dict], W: int, H: int, st: dict, position, hook: str = "") -> str:
     scale = W / 1080
     size = int(st["size"] * scale)
+    if isinstance(position, tuple):  # ("seam", y): centered on the split-screen seam
+        align, margin_v = 8, max(0, position[1] - int(size * 0.7))
+    else:
+        align, margin_v = {"top": (8, int(H * 0.12)), "middle": (5, 0), "lower": (2, int(H * 0.24)),
+                           "bottom": (2, int(H * 0.08))}.get(position, (2, int(H * 0.24)))
     if st["box"]:
         border, outline, back = 3, max(6, int(14 * scale)), _ass_color("#000000", 0x60)
     else:
@@ -344,12 +352,16 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Cap,{st['font']},{size},{_ass_color(st['color'])},{_ass_color(st['highlight'])},{_ass_color('#000000' if st['box'] else st['outline'], 0x60 if st['box'] else 0)},{back},{-1 if st['bold'] else 0},0,0,0,100,100,0,0,{border},{outline},{int(st['shadow'] * scale)},{align},{int(60 * scale)},{int(60 * scale)},{margin_v},1
+Style: Hook,{st['font']},{int(58 * scale)},&H00111111,&H00111111,&H00FFFFFF,&H00FFFFFF,-1,0,0,0,100,100,0,0,3,{int(18 * scale)},0,8,{int(110 * scale)},{int(110 * scale)},{int(H * 0.09)},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     hl = _ass_color(st["highlight"])
     events = []
+    if hook:
+        # Hook: the clip's title in a white box for the first seconds, like Shorts editors do.
+        events.append(f"Dialogue: 1,{_ass_time(0)},{_ass_time(HOOK_SECONDS)},Hook,,0,0,0,,{{\\fad(120,250)}}{_ass_escape(hook[:100])}")
     for ln in lines:
         ws = ln["words"]
         for i, w in enumerate(ws):
@@ -400,9 +412,9 @@ def render(job_id: int, ctx: Ctx):
         clip.render_status = "rendering"
         db.commit()
         src, start, end, sw, sh = source_path(p), clip.start, clip.end, p.width, p.height
-        overrides, fps, cid = clip.caption_overrides, p.fps, clip.id
+        overrides, fps, cid, title, has_audio = clip.caption_overrides, p.fps, clip.id, clip.title, bool(p.has_audio)
     try:
-        _render(ctx, src, p.id, cid, start, end, sw, sh, fps, st, segments, overrides)
+        _render(ctx, src, p.id, cid, start, end, sw, sh, fps, st, segments, overrides, title, has_audio)
     except BaseException:
         with SessionLocal() as db:
             c = db.get(Clip, cid)
@@ -412,74 +424,191 @@ def render(job_id: int, ctx: Ctx):
         raise
 
 
-def _render(ctx, src, pid, cid, start, end, sw, sh, fps, st, segments, overrides):
+# ---------------------------------------------------------------- jump cuts / time remapping
+
+def keep_segments(words: list[dict], dur: float, pause: float = PAUSE) -> list[tuple[float, float]]:
+    """Intervals (clip-relative) to keep so that silences longer than `pause` are cut out."""
+    if not words:
+        return [(0.0, dur)]
+    pad_after, pad_before = 0.15, 0.08
+    segs = [[max(0.0, words[0]["start"] - (pad_before if words[0]["start"] > pause else words[0]["start"])), None]]
+    for prev, nxt in zip(words, words[1:]):
+        if nxt["start"] - prev["end"] > pause:
+            segs[-1][1] = prev["end"] + pad_after
+            segs.append([nxt["start"] - pad_before, None])
+    segs[-1][1] = min(dur, words[-1]["end"] + 0.35)
+    return [(round(a, 3), round(b, 3)) for a, b in segs if b - a > 0.05]
+
+
+def remap(t: float, keep: list[tuple[float, float]]) -> float:
+    """Clip-relative time -> time on the jump-cut timeline (times inside a cut snap to the next kept frame)."""
+    acc = 0.0
+    for a, b in keep:
+        if t < a:
+            return acc
+        if t <= b:
+            return acc + t - a
+        acc += b - a
+    return acc
+
+
+def remap_lines(lines: list[dict], keep) -> list[dict]:
+    out = []
+    for ln in lines:
+        ws = [{**w, "start": remap(w["start"], keep), "end": remap(w["end"], keep)} for w in ln["words"]]
+        out.append({**ln, "start": remap(ln["start"], keep), "end": remap(ln["end"], keep), "words": ws})
+    return out
+
+
+# ---------------------------------------------------------------- layouts
+
+def facecam_box(samples, sw: int, sh: int, panel_ar: float):
+    """A streamer facecam: small face that stays put. Returns (x, y, w, h) in source px, or None."""
+    hits = [s for s in samples if s[1] is not None]
+    if len(hits) < 0.3 * max(1, len(samples)):
+        return None
+    cx, fh, cy = (float(np.median([h[i] for h in hits])) for i in (1, 2, 3))
+    if fh >= 0.12 or np.std([h[1] for h in hits]) > 0.05 or np.std([h[3] for h in hits]) > 0.05:
+        return None  # big or moving face: a talking head, not a facecam
+    bh = min(sh, fh * sh * 3.2)
+    bw = min(sw, bh * panel_ar)
+    bh = bw / panel_ar
+    x = min(max(0, cx * sw - bw / 2), sw - bw)
+    y = min(max(0, cy * sh - bh * 0.45), sh - bh)
+    return int(x) // 2 * 2, int(y) // 2 * 2, int(bw) // 2 * 2, int(bh) // 2 * 2
+
+
+def sentence_spans(lines: list[dict]) -> list[tuple[float, float]]:
+    spans, cur = [], None
+    for ln in lines:
+        cur = cur or ln["start"]
+        if ln["text"].rstrip().endswith((".", "?", "!")):
+            spans.append((cur, ln["end"]))
+            cur = None
+    if cur is not None and lines:
+        spans.append((cur, lines[-1]["end"]))
+    return spans
+
+
+# ---------------------------------------------------------------- render
+
+def _render(ctx, src, pid, cid, start, end, sw, sh, fps, st, segments, overrides, title="", has_audio=True):
     dur = end - start
     W, H = SIZES.get(st["aspect"], SIZES["9:16"])
     out_dir = project_dir(pid) / "clips"
     out_dir.mkdir(exist_ok=True)
     tmp, final = out_dir / f"{cid}.tmp.mp4", out_dir / f"{cid}.mp4"
+    out_fps = min(fps or 30, 60)
 
+    # --- timeline: jump cuts from word timings
+    words = clip_words(segments, start, end)
+    keep = keep_segments(words, dur) if st.get("remove_pauses") else [(0.0, dur)]
+    new_dur = sum(b - a for a, b in keep)
+
+    # --- framing
     layout = st["layout"]
     src_ar, dst_ar = sw / sh, W / H
     crop_w = int(sh * dst_ar) // 2 * 2
     can_crop = src_ar > dst_ar + 0.01
-    track = [(0.0, 0.5)]
-    if can_crop and layout in ("auto", "crop"):
-        if st.get("crop_x") is not None:
-            track = [(0.0, float(st["crop_x"]))]
-            layout = "crop"
+    track, cam = [(0.0, 0.5)], None
+    top_h = int(H * 0.4) // 2 * 2
+    if can_crop and layout in ("auto", "crop", "stream"):
+        if st.get("crop_x") is not None and layout != "stream":
+            track, layout = [(0.0, float(st["crop_x"]))], "crop"
         else:
             ctx.progress(0.03, "Finding faces")
             samples = _faces(src, start, dur, sw, sh)
             hits = [s for s in samples if s[1] is not None]
-            big = hits and float(np.median([s[2] for s in hits])) >= 0.12
+            big = bool(hits) and float(np.median([s[2] for s in hits])) >= 0.12
+            if dst_ar < 1:
+                cam = facecam_box(samples, sw, sh, W / top_h)
             if layout == "auto":
-                # Talking heads: follow the face. Gameplay/screens (or a small facecam): show the whole frame.
-                layout = "crop" if len(hits) >= 0.3 * max(1, len(samples)) and big else "fit"
+                # Talking head -> follow the face. Streamer facecam -> split screen. Otherwise -> whole frame.
+                layout = ("crop" if len(hits) >= 0.3 * max(1, len(samples)) and big
+                          else "stream" if cam else "fit")
+            if layout == "stream" and not cam:
+                layout = "fit"  # asked for split screen but no facecam found
             if layout == "crop":
-                track = crop_track(samples)
-    elif layout == "auto":
+                track = [(remap(t, keep), x) for t, x in crop_track(samples)]
+    elif layout in ("auto", "stream"):
         layout = "fit" if abs(src_ar - dst_ar) > 0.01 else "crop"
 
-    if layout == "crop" and can_crop:
-        vf = f"[0:v]crop=w={crop_w}:h={sh // 2 * 2}:x='{_crop_x_expr(track, sw, crop_w)}':y=0,scale={W}:{H}:flags=lanczos,setsar=1"
-    elif layout == "crop":  # source narrower than target: crop height instead (centered)
-        ch = int(sw / dst_ar) // 2 * 2
-        vf = f"[0:v]crop=w={sw // 2 * 2}:h={ch}:x=0:y={(sh - ch) // 2},scale={W}:{H}:flags=lanczos,setsar=1"
-    else:
-        vf = (f"[0:v]split[a][b];[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-              f"gblur=sigma=30,eq=brightness=-0.12[bg];[b]scale={W}:{H}:force_original_aspect_ratio=decrease:flags=lanczos[fg];"
-              f"[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1")
-
+    # --- captions / hook (times on the new timeline)
+    lines = []
     if st["captions"]:
-        lines = lines_from_overrides(overrides) if overrides else caption_lines(clip_words(segments, start, end), int(st["style"]["words"]))
-        if lines:
-            (out_dir / f"{cid}.ass").write_text(build_ass(lines, W, H, st["style"], st["position"]), encoding="utf-8")
-            vf += f",ass={cid}.ass"  # relative path via cwd: no filter-path escaping needed
-    vf += "[v]"
+        lines = lines_from_overrides(overrides) if overrides else caption_lines(words, int(st["style"]["words"]))
+        lines = remap_lines(lines, keep)
+    hook = (st.get("hook_text") or title or "").strip() if st.get("hook") else ""
+    position = st["position"]
+    if layout == "stream" and position == "lower":
+        position = ("seam", top_h)  # captions sit on the split, like streamer shorts
+    ass = build_ass(lines, W, H, st["style"], position, hook=hook) if (lines or hook) else None
 
-    out_fps = min(fps or 30, 60)
+    # --- filter graph
+    n = len(keep)
+    parts = [f"[0:v]split={n}" + "".join(f"[vs{i}]" for i in range(n)) if n > 1 else "[0:v]null[vs0]"]
+    if has_audio:
+        parts.append(f"[0:a]asplit={n}" + "".join(f"[as{i}]" for i in range(n)) if n > 1 else "[0:a]anull[as0]")
+    for i, (a, b) in enumerate(keep):
+        parts.append(f"[vs{i}]trim=start={a}:end={b},setpts=PTS-STARTPTS[v{i}]")
+        if has_audio:
+            fade = min(0.02, (b - a) / 4)
+            parts.append(f"[as{i}]atrim=start={a}:end={b},asetpts=PTS-STARTPTS,"
+                         f"afade=t=in:d={fade:.3f},afade=t=out:st={max(0, b - a - fade):.3f}:d={fade:.3f}[a{i}]")
+    if n > 1:
+        parts.append("".join(f"[v{i}]" + (f"[a{i}]" if has_audio else "") for i in range(n))
+                     + f"concat=n={n}:v=1:a={1 if has_audio else 0}[vc]" + ("[ac]" if has_audio else ""))
+    else:
+        parts.append("[v0]null[vc]" + (";[a0]anull[ac]" if has_audio else ""))
+
+    if layout == "crop" and can_crop:
+        v = f"[vc]crop=w={crop_w}:h={sh // 2 * 2}:x='{_crop_x_expr(track, sw, crop_w)}':y=0,scale={W}:{H}:flags=lanczos"
+        spans = sentence_spans(lines)[1::2] if st.get("zoom") else []
+        if spans:
+            cond = "+".join(f"between(it,{a:.2f},{b:.2f})" for a, b in spans)
+            v += (f",zoompan=z='if({cond},1.1,1)':x='iw/2-(iw/zoom/2)':y='ih/2.4-(ih/zoom/2.4)'"
+                  f":d=1:s={W}x{H}:fps={out_fps:.3f}")
+    elif layout == "crop":  # source narrower than target: crop height (centered)
+        ch = int(sw / dst_ar) // 2 * 2
+        v = f"[vc]crop=w={sw // 2 * 2}:h={ch}:x=0:y={(sh - ch) // 2},scale={W}:{H}:flags=lanczos"
+    elif layout == "stream":
+        fx, fy, fw, fh = cam
+        bot_h = H - top_h
+        gw = min(sw, int(sh * W / bot_h)) // 2 * 2
+        gx = int((sw - gw) * (st["crop_x"] if st.get("crop_x") is not None else 0.5)) // 2 * 2
+        v = (f"[vc]split[cam][game];[cam]crop={fw}:{fh}:{fx}:{fy},scale={W}:{top_h}:flags=lanczos[top];"
+             f"[game]crop={gw}:{sh // 2 * 2}:{gx}:0,scale={W}:{bot_h}:flags=lanczos[bot];[top][bot]vstack")
+    else:
+        v = (f"[vc]split[a][b];[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+             f"gblur=sigma=30,eq=brightness=-0.12[bg];[b]scale={W}:{H}:force_original_aspect_ratio=decrease:flags=lanczos[fg];"
+             f"[bg][fg]overlay=(W-w)/2:(H-h)/2")
+    v += ",setsar=1"
+    if ass:
+        (out_dir / f"{cid}.ass").write_text(ass, encoding="utf-8")
+        v += f",ass={cid}.ass"  # relative path via cwd: no filter-path escaping needed
+    parts.append(v + "[v]")
+    if has_audio:
+        parts.append("[ac]loudnorm=I=-14:TP=-1.5:LRA=11[a]")
+    graph = ";".join(parts)
+
     try:
-        _encode(ctx, src, start, dur, vf, out_fps, tmp, out_dir)
+        _run_ffmpeg(["-y", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-filter_complex", graph,
+                     "-map", "[v]", *(["-map", "[a]"] if has_audio else []), "-r", f"{out_fps:.3f}",
+                     "-c:v", "libx264", "-preset", os.getenv("RENDER_PRESET", "medium"), "-crf", os.getenv("RENDER_CRF", "18"),
+                     "-profile:v", "high", "-pix_fmt", "yuv420p",
+                     "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+                     "-movflags", "+faststart", tmp.name], new_dur, ctx, out_dir, 0.08, 0.97)
+        tmp.replace(final)
     finally:
         tmp.unlink(missing_ok=True)  # partial output from a failed/cancelled render
         (out_dir / f"{cid}.ass").unlink(missing_ok=True)
-    subprocess.run([config.FFMPEG, "-v", "error", "-y", "-ss", f"{min(1.0, dur / 2):.2f}", "-i", str(final),
+    subprocess.run([config.FFMPEG, "-v", "error", "-y", "-ss", f"{min(1.0, new_dur / 2):.2f}", "-i", str(final),
                     "-frames:v", "1", "-vf", "scale=360:-2", "-q:v", "3", str(out_dir / f"{cid}.jpg")], timeout=120)
     with SessionLocal() as db:
         c = db.get(Clip, cid)
         if c:
             c.render_status, c.render_path = "done", f"clips/{cid}.mp4"
             c.thumbnail_path = f"clips/{cid}.jpg" if (out_dir / f"{cid}.jpg").exists() else None
-            c.render_settings = {**(c.render_settings or {}), "_rendered_layout": layout}
+            c.render_settings = {**(c.render_settings or {}), "_rendered_layout": layout,
+                                 "_rendered_duration": round(new_dur, 2), "_cuts": len(keep) - 1}
             db.commit()
-
-
-def _encode(ctx, src, start, dur, vf, out_fps, tmp, out_dir):
-    _run_ffmpeg(["-y", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-filter_complex", vf,
-                 "-map", "[v]", "-map", "0:a?", "-r", f"{out_fps:.3f}",
-                 "-c:v", "libx264", "-preset", os.getenv("RENDER_PRESET", "medium"), "-crf", os.getenv("RENDER_CRF", "18"),
-                 "-profile:v", "high", "-pix_fmt", "yuv420p",
-                 "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-                 "-movflags", "+faststart", tmp.name], dur, ctx, out_dir, 0.08, 0.97)
-    tmp.replace(out_dir / tmp.name.replace(".tmp.mp4", ".mp4"))
