@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, CalendarClock, Check, Download, Film, Plus, RotateCcw, Save, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, CalendarClock, Check, Download, Film, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { ScheduleDialog } from "@/components/schedule";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -9,7 +9,7 @@ import {
   api, fmtTime, type CaptionLine, type CaptionStyle, type Clip, type Project, type RenderSettings, type SystemInfo,
 } from "@/lib/api";
 import { RENDER_ACTIVE, RenderStatus, ScoreBreakdown, renderLabel } from "@/components/clips";
-import { Badge, Button, ErrorNote, Field, Input, Section, Select, StatusBadge, Textarea } from "@/components/ui";
+import { Badge, Button, ErrorNote, Field, Input, Section, Select, SaveBar, StatusBadge, Textarea, Loading } from "@/components/ui";
 
 type Draft = {
   start: number; end: number; title: string; description: string; hashtags: string[];
@@ -196,7 +196,7 @@ export default function ClipEditor() {
   }, [rendering, id]);
 
   if (missing) return <p className="text-sm text-muted">Clip not found.</p>;
-  if (!clip || !draft || !project) return error ? <ErrorNote>{error}</ErrorNote> : <p className="text-sm text-muted">Loading…</p>;
+  if (!clip || !draft || !project) return error ? <ErrorNote>{error}</ErrorNote> : <Loading />;
 
   const orig = draftFrom(clip);
   const dirty = !same(draft, orig);
@@ -279,8 +279,10 @@ export default function ClipEditor() {
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Link href={`/projects/${clip.project_id}`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg"><ArrowLeft size={15} /> {clip.project_name}</Link>
+      <title>{`${clip.title || "Clip"} · ViralClip`}</title>
+      <Link href={`/projects/${clip.project_id}`} className="inline-flex max-w-full items-center gap-1.5 text-sm text-muted hover:text-fg"><ArrowLeft size={15} className="shrink-0" /> <span className="truncate">{clip.project_name}</span></Link>
+      <div className="mb-5 mt-2 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="min-w-0 max-w-2xl text-xl font-semibold tracking-tight">{clip.title || "Untitled clip"}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={clip.review_status} />
           {clip.review_status !== "approved" && <Button onClick={() => review("approved")} disabled={!!busy}><Check size={15} /> Approve</Button>}
@@ -304,7 +306,7 @@ export default function ClipEditor() {
             </div>
           )}
           <video ref={player} key={src} src={src} controls preload="metadata" playsInline
-            className={`w-full rounded-lg border border-line bg-black ${showRendered ? "max-h-[70vh] object-contain" : "aspect-video"}`}
+            className={`w-full rounded-lg border border-line bg-black ${showRendered ? "mx-auto max-h-[60vh] object-contain lg:max-h-[70vh]" : "aspect-video"}`}
             style={showRendered ? { aspectRatio: (ASPECTS[clip.render_settings.aspect] ?? ASPECTS["9:16"]).join("/") } : undefined} />
           {(!hasRender || clip.render_status === "outdated") && (
             <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
@@ -349,7 +351,7 @@ export default function ClipEditor() {
 
           <Section title="Framing">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Aspect ratio">
+              <Field label="Aspect ratio" group>
                 <div className="flex flex-wrap gap-1.5">
                   {Object.keys(ASPECTS).map((a) => (
                     <button key={a} type="button" onClick={() => setRs({ aspect: a })}
@@ -528,14 +530,9 @@ export default function ClipEditor() {
             </div>
           </Section>
 
-          <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-3 border-t border-line bg-bg/95 px-1 py-3 backdrop-blur">
-            <Button variant="primary" onClick={() => act("save", async () => { await save(); })} disabled={!(dirty || captionsDirty) || !!busy}>
-              <Save size={15} /> {busy === "save" ? "Saving…" : "Save changes"}
-            </Button>
-            {(dirty || captionsDirty) && <Button variant="ghost" onClick={() => { setDraft(orig); setLines(linesOrig); setError(""); }}>Discard</Button>}
-            <span className="text-sm text-muted">{dirty || captionsDirty ? "Unsaved changes" : saved || "No unsaved changes"}</span>
-            <ErrorNote>{error}</ErrorNote>
-          </div>
+          <SaveBar dirty={dirty || captionsDirty} saving={busy === "save"} savedText={saved} error={error}
+            onSave={() => act("save", async () => { await save(); })}
+            onDiscard={() => { setDraft(orig); setLines(linesOrig); setError(""); }} />
         </div>
       </div>
       {publishing && <ScheduleDialog clipIds={[clip.id]} onClose={() => setPublishing(false)} onDone={() => setPublishing(false)} />}

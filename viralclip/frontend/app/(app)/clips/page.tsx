@@ -7,7 +7,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { api, fmtDate, fmtTime, type Clip, type Project } from "@/lib/api";
 import { BulkBar, RENDER_ACTIVE } from "@/components/clips";
 import { ScheduleDialog } from "@/components/schedule";
-import { Button, Card, Empty, Input, PageHeader, Select, StatusBadge } from "@/components/ui";
+import { Button, Card, Empty, Input, PageHeader, Select, StatusBadge, Loading } from "@/components/ui";
 
 function ClipsGrid() {
   const params = useSearchParams();
@@ -68,7 +68,7 @@ function ClipsGrid() {
           <option value="done">Rendered</option><option value="outdated">Outdated</option><option value="failed">Failed</option>
         </Select>
       </div>
-      {!clips ? <p className="text-sm text-muted">Loading…</p> : clips.length === 0 ? (
+      {!clips ? <Loading /> : clips.length === 0 ? (
         <Empty icon={<Clapperboard size={22} />} title={any ? "No clips match these filters" : "No clips yet"}>
           {any ? <button className="text-accent hover:underline" onClick={() => { setQ(""); router.replace(pathname); }}>Clear filters</button> :
             "Open a project and use Generate clips to find the best moments."}
@@ -115,5 +115,5 @@ function ClipsGrid() {
 }
 
 export default function ClipsPage() {
-  return <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}><ClipsGrid /></Suspense>;
+  return <Suspense fallback={<Loading />}><ClipsGrid /></Suspense>;
 }

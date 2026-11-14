@@ -22,14 +22,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-dvh place-items-center px-4">
-      <Card className="w-full max-w-sm p-6">
+    <div className="grid min-h-dvh place-items-center bg-[radial-gradient(ellipse_at_top,rgba(255,106,61,0.10),transparent_55%)] px-4">
+      <title>{mode === "login" ? "Sign in · ViralClip" : "Create account · ViralClip"}</title>
+      <Card className="w-full max-w-sm p-6 shadow-2xl shadow-black/50">
         <div className="mb-6 flex items-center gap-2 text-[15px] font-semibold">
-          <span className="grid size-6 place-items-center rounded bg-accent text-[11px] font-bold text-accent-fg">VC</span>
+          <img src="/icon.svg" alt="" className="size-7" />
           ViralClip
         </div>
         <h1 className="text-lg font-semibold">{mode === "login" ? "Sign in" : "Create an account"}</h1>
-        <p className="mb-5 mt-1 text-sm text-muted">Your videos stay on this server.</p>
+        <p className="mb-5 mt-1 text-sm text-muted">Long videos in, captioned Shorts out. Your videos stay on this server.</p>
         <form onSubmit={submit} className="space-y-4">
           <Field label="Email"><Input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
           <Field label="Password" hint={mode === "register" ? "At least 8 characters." : undefined}>

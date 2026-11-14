@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { browserTz, defaultLocalSlot, localInput, timeZones, type YtAccount, type YtConfig, type YtUpload } from "@/lib/youtube";
-import { Button, Card, ErrorNote, Field, Input } from "@/components/ui";
+import { Button, Card, ErrorNote, Field, Input, Loading } from "@/components/ui";
 
 const selectCls = "h-9 w-full rounded-md border border-line bg-bg px-2 text-sm outline-none focus:border-accent";
 
@@ -96,7 +96,7 @@ export function ScheduleDialog({ clipIds, onClose, onDone }: { clipIds: number[]
           <p className="text-sm text-muted">YouTube isn&apos;t set up on this server yet. See <Link href="/youtube" className="text-fg underline">YouTube Studio</Link> for setup steps.</p>
         ) : accounts && accounts.length === 0 ? (
           <p className="text-sm text-muted">No channel connected. <Link href="/youtube" className="text-fg underline">Connect a channel</Link> first.</p>
-        ) : !accounts ? <p className="text-sm text-muted">Loading…</p> : (
+        ) : !accounts ? <Loading /> : (
           <div className="space-y-4">
             <Field label="Channel">
               <select className={selectCls} value={accountId ?? ""} onChange={(e) => { setAccountId(Number(e.target.value)); setPreview(null); }}>

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { YtUpload } from "@/lib/youtube";
 import { GROUPS, groupOf, UploadRow } from "@/components/uploads";
-import { Card, Empty, ErrorNote, PageHeader } from "@/components/ui";
+import { Card, Empty, ErrorNote, PageHeader, Loading } from "@/components/ui";
 
 export default function QueuePage() {
   const [items, setItems] = useState<YtUpload[] | null>(null);
@@ -24,7 +24,7 @@ export default function QueuePage() {
     <>
       <PageHeader title="Upload Queue" sub="Everything sent to YouTube. Upload and schedule states are tracked separately." />
       <ErrorNote>{error}</ErrorNote>
-      {!items ? <p className="text-sm text-muted">Loading…</p> : items.length === 0 ? (
+      {!items ? <Loading /> : items.length === 0 ? (
         <Empty icon={<ListVideo size={22} />} title="Nothing queued">
           Approve and render clips, then send them to YouTube from <Link href="/projects" className="text-fg underline">a project</Link>.
         </Empty>

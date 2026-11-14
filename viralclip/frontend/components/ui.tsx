@@ -1,3 +1,4 @@
+import { Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
@@ -27,14 +28,16 @@ export function Input({ className, ...p }: ComponentProps<"input">) {
   return <input className={cx("h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none focus:border-accent placeholder:text-muted/60", className)} {...p} />;
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
-  return (
-    <label className="block space-y-1.5">
+/** Labeled form control. Use `group` when the children are several buttons (a <label> would name them all). */
+export function Field({ label, hint, children, group }: { label: string; hint?: ReactNode; children: ReactNode; group?: boolean }) {
+  const inner = (
+    <>
       <span className="text-xs font-medium text-muted">{label}</span>
       {children}
       {hint && <span className="block text-xs text-muted">{hint}</span>}
-    </label>
+    </>
   );
+  return group ? <div role="group" aria-label={label} className="block space-y-1.5">{inner}</div> : <label className="block space-y-1.5">{inner}</label>;
 }
 
 const TONES: Record<string, string> = {
@@ -73,7 +76,7 @@ export function Section({ title, actions, children, className }: { title: string
 }
 
 export function Badge({ children, tone = "gray" }: { children: ReactNode; tone?: keyof typeof TONES }) {
-  return <span className={cx("inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset", TONES[tone])}>{children}</span>;
+  return <span className={cx("inline-flex shrink-0 items-center whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset", TONES[tone])}>{children}</span>;
 }
 
 export function StatusBadge({ status }: { status: string }) {
@@ -91,21 +94,22 @@ export function Progress({ value }: { value: number }) {
 export function PageHeader({ title, sub, actions }: { title: string; sub?: ReactNode; actions?: ReactNode }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-        {sub && <p className="mt-1 text-sm text-muted">{sub}</p>}
+      <title>{`${title} · ViralClip`}</title>
+      <div className="min-w-0">
+        <h1 className="break-words text-xl font-semibold tracking-tight">{title}</h1>
+        {sub && <div className="mt-1 text-sm text-muted">{sub}</div>}
       </div>
-      {actions && <div className="flex gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
   );
 }
 
 export function Empty({ icon, title, children }: { icon: ReactNode; title: string; children?: ReactNode }) {
   return (
-    <Card className="flex flex-col items-center gap-3 px-6 py-14 text-center">
-      <div className="text-muted">{icon}</div>
+    <Card className="flex flex-col items-center gap-2 border-dashed px-6 py-12 text-center">
+      <div className="mb-1 grid size-11 place-items-center rounded-full bg-panel-2 text-muted ring-1 ring-line">{icon}</div>
       <p className="font-medium">{title}</p>
-      {children && <div className="text-sm text-muted">{children}</div>}
+      {children && <div className="max-w-sm text-sm text-muted">{children}</div>}
     </Card>
   );
 }
@@ -113,4 +117,36 @@ export function Empty({ icon, title, children }: { icon: ReactNode; title: strin
 export function ErrorNote({ children }: { children: ReactNode }) {
   if (!children) return null;
   return <p role="alert" className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{children}</p>;
+}
+
+export function Loading({ label = "Loading…" }: { label?: string }) {
+  return (
+    <div className="flex items-center gap-2 py-10 text-sm text-muted" role="status">
+      <Loader2 size={16} className="animate-spin" /> {label}
+    </div>
+  );
+}
+
+/** Save/discard controls: a floating sticky bar while there are unsaved changes, a quiet note otherwise. */
+export function SaveBar({ dirty, saving, onSave, onDiscard, label = "Save changes", savedText, error }: {
+  dirty: boolean; saving: boolean; onSave: () => void; onDiscard: () => void; label?: string; savedText?: string; error?: ReactNode;
+}) {
+  if (!dirty) {
+    return (savedText || error) ? (
+      <div className="space-y-2 py-1">
+        {savedText && <p className="text-sm text-emerald-300/90">{savedText}</p>}
+        <ErrorNote>{error}</ErrorNote>
+      </div>
+    ) : null;
+  }
+  return (
+    <div className="sticky bottom-3 z-20 rounded-lg border border-accent/40 bg-panel-2/95 p-3 shadow-2xl shadow-black/60 backdrop-blur">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="mr-auto text-sm"><span className="mr-2 inline-block size-2 rounded-full bg-accent align-middle" />Unsaved changes</span>
+        <Button variant="ghost" onClick={onDiscard} disabled={saving}>Discard</Button>
+        <Button variant="primary" onClick={onSave} disabled={saving}><Save size={15} /> {saving ? "Saving…" : label}</Button>
+      </div>
+      {error && <div className="mt-2"><ErrorNote>{error}</ErrorNote></div>}
+    </div>
+  );
 }

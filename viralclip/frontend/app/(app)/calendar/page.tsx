@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { browserTz, dayKey, fmtInZone, parseUtc, type YtUpload } from "@/lib/youtube";
 import { TimeZoneSelect } from "@/components/schedule";
 import { groupOf, UploadRow } from "@/components/uploads";
-import { Button, Card, ErrorNote, PageHeader } from "@/components/ui";
+import { Button, Card, ErrorNote, PageHeader, Loading } from "@/components/ui";
 
 type View = "month" | "week" | "day";
 
@@ -30,7 +30,7 @@ const noop = () => () => {};
 export default function CalendarPage() {
   // Time zones and "today" differ between the server prerender and the browser: render client-side only.
   const hydrated = useSyncExternalStore(noop, () => true, () => false);
-  return hydrated ? <Calendar /> : <p className="text-sm text-muted">Loading…</p>;
+  return hydrated ? <Calendar /> : <Loading />;
 }
 
 function Calendar() {
@@ -93,7 +93,7 @@ function Calendar() {
       </div>
       <ErrorNote>{error}</ErrorNote>
 
-      {!items ? <p className="text-sm text-muted">Loading…</p> : view === "day" ? (
+      {!items ? <Loading /> : view === "day" ? (
         <Card className="divide-y divide-line">
           {(byDay[anchor] ?? []).length === 0 ? <p className="p-4 text-sm text-muted">Nothing on this day.</p>
             : byDay[anchor].map((u) => <div key={u.id} className="p-2">{chip(u, false)}</div>)}

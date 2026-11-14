@@ -55,6 +55,7 @@ def test_end_to_end_analyze_and_render():
 
     tr = c.get(f"/api/projects/{pid}/transcript").json()
     assert "mistake" in tr["text"].lower() and tr["language"] == "en"
+    assert len(tr["segments"]) >= 8 and all(s["end"] - s["start"] < 15 for s in tr["segments"])  # sentence rows
 
     clips = c.get(f"/api/clips?project_id={pid}").json()
     assert 1 <= len(clips) <= 3

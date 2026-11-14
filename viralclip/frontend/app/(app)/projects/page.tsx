@@ -4,7 +4,7 @@ import { Archive, Film, Plus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, fmtDate, fmtDuration, type Project } from "@/lib/api";
-import { Button, Card, Empty, Input, LinkButton, PageHeader, StatusBadge } from "@/components/ui";
+import { Button, Card, Empty, Input, LinkButton, PageHeader, StatusBadge, Loading } from "@/components/ui";
 
 export default function ProjectsPage() {
   const [archived, setArchived] = useState(false);
@@ -24,15 +24,16 @@ export default function ProjectsPage() {
           <Archive size={16} /> {archived ? "Showing archived" : "Show archived"}
         </Button>
       </div>
-      {!shown ? <p className="text-sm text-muted">Loading…</p> : shown.length === 0 ? (
+      {!shown ? <Loading /> : shown.length === 0 ? (
         <Empty icon={<Film size={22} />} title={archived ? "No archived projects" : q ? "No matches" : "No projects yet"} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((p) => (
             <Link key={p.id} href={`/projects/${p.id}`}>
               <Card className="overflow-hidden transition hover:border-zinc-600">
-                <div className="aspect-video bg-panel-2">
-                  {p.thumbnail_url && <img src={p.thumbnail_url} alt="" className="size-full object-cover" />}
+                <div className="grid aspect-video place-items-center bg-panel-2 text-muted">
+                  {p.thumbnail_url ? <img src={p.thumbnail_url} alt="" className="size-full object-cover" /> :
+                    <span className="flex flex-col items-center gap-1 text-xs"><Film size={20} />{p.status === "uploading" ? "Upload incomplete" : p.status === "importing" ? "Importing…" : "No preview"}</span>}
                 </div>
                 <div className="space-y-1 p-3">
                   <div className="flex items-center justify-between gap-2">

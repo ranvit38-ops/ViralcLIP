@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, CalendarDays, Clapperboard, Film, LayoutDashboard, ListVideo, LogOut, Menu, MonitorPlay, Plus, Settings, X } from "lucide-react";
+import { Bot, CalendarDays, Loader2, Clapperboard, Film, LayoutDashboard, ListVideo, LogOut, Menu, MonitorPlay, Plus, Settings, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -30,12 +30,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     href === "/projects" ? path.startsWith("/projects") && path !== "/projects/new"
       : href === "/" || href === "/projects/new" ? path === href : path === href || path.startsWith(href + "/");
 
-  if (!me) return <div className="grid min-h-dvh place-items-center text-sm text-muted">Loading…</div>;
+  if (!me) return <div className="grid min-h-dvh place-items-center"><Loader2 size={20} className="animate-spin text-muted" aria-label="Loading" /></div>;
 
   const nav = (
     <nav className="flex h-full flex-col gap-1 p-3">
       <Link href="/" className="mb-4 flex items-center gap-2 px-2 pt-1 text-[15px] font-semibold tracking-tight">
-        <span className="grid size-6 place-items-center rounded bg-accent text-[11px] font-bold text-accent-fg">VC</span>
+        <img src="/icon.svg" alt="" className="size-6" />
         ViralClip
       </Link>
       {NAV.map(({ href, label, icon: Icon }) => (
@@ -66,7 +66,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <div className="min-w-0 flex-1">
         <header className="flex h-12 items-center gap-2 border-b border-line px-4 md:hidden">
           <button aria-label={open ? "Close menu" : "Open menu"} onClick={() => setOpen(!open)} className="text-muted">{open ? <X size={20} /> : <Menu size={20} />}</button>
-          <span className="text-sm font-semibold">ViralClip</span>
+          <span className="flex items-center gap-2 text-sm font-semibold"><img src="/icon.svg" alt="" className="size-5" />ViralClip</span>
         </header>
         <main className="mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8">{children}</main>
       </div>

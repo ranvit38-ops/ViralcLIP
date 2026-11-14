@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { api, fmtDate, fmtDuration } from "@/lib/api";
 import { LENGTH_PRESETS, presetFor } from "@/components/project-panels";
-import { Badge, Button, Card, ErrorNote, Field, Input, PageHeader, Section, Select } from "@/components/ui";
+import { Badge, Button, Card, ErrorNote, Field, Input, PageHeader, SaveBar, Section, Select, Loading } from "@/components/ui";
 
 type Settings = {
   enabled: boolean; twitch_account_ids: number[]; youtube_account_ids: number[]; min_source_minutes: number;
@@ -69,7 +69,7 @@ function Vods({ acc, onImported }: { acc: TwitchAccount; onImported: () => void 
 }
 
 export default function AutomationPage() {
-  return <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}><Automation /></Suspense>;
+  return <Suspense fallback={<Loading />}><Automation /></Suspense>;
 }
 
 function Automation() {
@@ -123,10 +123,7 @@ function Automation() {
     <>
       <PageHeader title="Automation"
         sub="New streams and videos from your own channels are imported, clipped and published without you lifting a finger."
-        actions={<>
-          {st.settings.enabled && <Button onClick={runNow} disabled={busy}><RefreshCw size={16} /> Check now</Button>}
-          <Button variant="primary" onClick={() => save()} disabled={busy || !dirty}>{busy ? "Saving…" : dirty ? "Save changes" : saved || "Saved"}</Button>
-        </>} />
+        actions={st.settings.enabled ? <Button onClick={runNow} disabled={busy}><RefreshCw size={16} /> Check now</Button> : undefined} />
 
       <div className="space-y-4">
         <ErrorNote>{error || params.get("error")}</ErrorNote>
@@ -279,6 +276,8 @@ function Automation() {
           </label>
           <p className="mt-2 text-xs text-muted">Streams are big (often 5–10 GB). Rendered clips are always kept.</p>
         </Step>
+
+        <SaveBar dirty={dirty} saving={busy} savedText={saved ? "Automation settings saved." : ""} onSave={() => save()} onDiscard={() => setS(st.settings)} />
 
         <Section title="Activity" actions={<Button variant="ghost" onClick={load}><RefreshCw size={15} /> Refresh</Button>}>
           {st.events.length === 0 ? <p className="text-sm text-muted">Nothing yet. Activity appears here as automation works.</p> : (

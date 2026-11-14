@@ -7,7 +7,7 @@ import { ACTIVE_JOB, api, fmtBytes, fmtDate, fmtDuration, type Clip, type Projec
 import { useUpload } from "@/lib/upload";
 import { BulkBar, ClipReviewRow, RENDER_ACTIVE } from "@/components/clips";
 import { GeneratePanel, JobsList, TranscriptPanel, type Transcript } from "@/components/project-panels";
-import { Button, Card, Empty, ErrorNote, Input, PageHeader, Progress, Section, StatusBadge } from "@/components/ui";
+import { Button, Card, Empty, ErrorNote, Input, PageHeader, Progress, Section, StatusBadge, Loading } from "@/components/ui";
 
 function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -75,7 +75,7 @@ export default function ProjectPage() {
   }, [active, load]);
 
   if (missing) return <p className="text-sm text-muted">Project not found.</p>;
-  if (!p) return <p className="text-sm text-muted">Loading…</p>;
+  if (!p) return <Loading />;
 
   async function patch(body: object) {
     setError("");

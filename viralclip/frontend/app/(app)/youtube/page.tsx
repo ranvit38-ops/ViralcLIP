@@ -6,7 +6,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { api, fmtDate, type Project } from "@/lib/api";
 import { browserTz, type YtAccount, type YtConfig } from "@/lib/youtube";
 import { TimeZoneSelect } from "@/components/schedule";
-import { Badge, Button, Card, Empty, ErrorNote, Field, Input, PageHeader } from "@/components/ui";
+import { Badge, Button, Card, Empty, ErrorNote, Field, Input, PageHeader, Loading } from "@/components/ui";
 
 const connectCls = "inline-flex items-center justify-center gap-2 rounded-md px-3 h-9 text-sm font-medium transition";
 
@@ -156,5 +156,5 @@ function Studio() {
 }
 
 export default function YouTubePage() {
-  return <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}><Studio /></Suspense>;
+  return <Suspense fallback={<Loading />}><Studio /></Suspense>;
 }

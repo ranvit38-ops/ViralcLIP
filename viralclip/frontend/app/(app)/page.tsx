@@ -4,7 +4,8 @@ import { AlertTriangle, Clapperboard, Film, Inbox, Loader2, Plus } from "lucide-
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, fmtDate, type Job, type Project } from "@/lib/api";
-import { Card, Empty, LinkButton, PageHeader, Progress, StatusBadge } from "@/components/ui";
+import { Card, Empty, LinkButton, Loading, PageHeader, Progress, StatusBadge } from "@/components/ui";
+import { JOB_LABEL } from "@/components/project-panels";
 import { YouTubeStats } from "@/components/youtube-stats";
 
 type Dash = {
@@ -24,18 +25,20 @@ function Stat({ label, value, icon, href }: { label: string; value: number; icon
 
 export default function Dashboard() {
   const [d, setD] = useState<Dash | null>(null);
+  const [names, setNames] = useState<Record<number, string>>({});
   useEffect(() => {
+    api<Project[]>("/api/projects").then((ps) => setNames(Object.fromEntries(ps.map((p) => [p.id, p.name])))).catch(() => {});
     const load = () => api<Dash>("/api/dashboard").then(setD).catch(() => {});
     load();
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, []);
 
-  if (!d) return <p className="text-sm text-muted">Loading…</p>;
+  if (!d) return <Loading />;
   return (
     <>
       <PageHeader title="Dashboard" actions={<LinkButton href="/projects/new" variant="primary"><Plus size={16} /> New project</LinkButton>} />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1">
         <Stat label="Projects" value={d.projects} icon={<Film size={14} />} href="/projects" />
         <Stat label="Clips generated" value={d.clips} icon={<Clapperboard size={14} />} href="/clips" />
         <Stat label="Awaiting review" value={d.clips_awaiting_review} icon={<Inbox size={14} />} href="/clips?review_status=suggested" />
@@ -44,7 +47,7 @@ export default function Dashboard() {
       </div>
       <YouTubeStats />
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      <div className="mt-8 grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
         <section>
           <h2 className="mb-3 text-sm font-medium text-muted">Recent projects</h2>
           {d.recent_projects.length === 0 ? (
@@ -53,8 +56,8 @@ export default function Dashboard() {
             <Card className="divide-y divide-line">
               {d.recent_projects.map((p) => (
                 <Link key={p.id} href={`/projects/${p.id}`} className="flex items-center gap-3 p-3 hover:bg-panel-2">
-                  <div className="aspect-video w-20 shrink-0 overflow-hidden rounded bg-panel-2">
-                    {p.thumbnail_url && <img src={p.thumbnail_url} alt="" className="size-full object-cover" />}
+                  <div className="grid aspect-video w-20 shrink-0 place-items-center overflow-hidden rounded bg-panel-2 text-muted">
+                    {p.thumbnail_url ? <img src={p.thumbnail_url} alt="" className="size-full object-cover" /> : <Film size={16} />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{p.name}</p>
@@ -75,11 +78,14 @@ export default function Dashboard() {
               {d.recent_jobs.map((j) => (
                 <Link key={j.id} href={`/projects/${j.project_id}`} className="block space-y-2 p-3 hover:bg-panel-2">
                   <div className="flex items-center justify-between gap-2 text-sm">
-                    <span className="capitalize">{j.job_type} · project #{j.project_id}</span>
+                    <span className="min-w-0 truncate"><span className="font-medium">{JOB_LABEL[j.job_type] ?? j.job_type}</span>
+                      <span className="text-muted"> · {names[j.project_id] ?? `Project #${j.project_id}`}</span></span>
                     <StatusBadge status={j.status} />
                   </div>
                   {j.status === "running" && <Progress value={j.progress} />}
-                  <p className="truncate text-xs text-muted">{j.error ?? j.message ?? ""} · {fmtDate(j.created_at)}</p>
+                  <p className={`truncate text-xs ${j.error ? "text-red-300" : "text-muted"}`}>
+                    {j.error ?? (j.status === "done" ? "Finished" : j.status === "cancelled" ? "Cancelled" : j.message)} · {fmtDate(j.finished_at ?? j.created_at)}
+                  </p>
                 </Link>
               ))}
             </Card>

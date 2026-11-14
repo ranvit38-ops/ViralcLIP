@@ -1,11 +1,10 @@
 "use client";
 
-import { Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, fmtBytes, type SystemInfo } from "@/lib/api";
 import { LANGUAGES, LENGTH_PRESETS, presetFor } from "@/components/project-panels";
-import { Badge, Button, ErrorNote, Field, Input, PageHeader, Progress, Section, Select } from "@/components/ui";
+import { Badge, ErrorNote, Field, Input, PageHeader, Progress, Section, Select, SaveBar, Loading } from "@/components/ui";
 
 type S = {
   defaults: { min_len: number; max_len: number; count: number; language: string };
@@ -45,7 +44,7 @@ export default function SettingsPage() {
     api<SystemInfo>("/api/system").then(setSys).catch(() => {});
   }, []);
 
-  if (!s || !orig) return error ? <ErrorNote>{error}</ErrorNote> : <p className="text-sm text-muted">Loading…</p>;
+  if (!s || !orig) return error ? <ErrorNote>{error}</ErrorNote> : <Loading />;
   const dirty = JSON.stringify(s) !== JSON.stringify(orig);
   const upd = <K extends keyof S>(k: K, patch: Partial<S[K]> | S[K]) => {
     setS({ ...s, [k]: typeof patch === "object" && patch !== null ? { ...(s[k] as object), ...patch } : patch });
@@ -186,19 +185,15 @@ export default function SettingsPage() {
               <p className="text-muted">{fmtBytes(sys.disk_free)} free of {fmtBytes(sys.disk_total)} · ViralClip is using {fmtBytes(sys.storage_used)} for videos and clips.</p>
               <p className="text-xs text-muted">The storage folder is set with VC_DATA_DIR on the server.</p>
             </div>
-          ) : <p className="text-sm text-muted">Loading…</p>}
+          ) : <Loading />}
         </Section>
 
         <Section title="Privacy & data">
           <p className="text-sm text-muted">Your videos never leave this server unless you upload them somewhere. Delete a project (and all its clips and files) from its page in <Link href="/projects" className="text-accent hover:underline">My Videos</Link>.</p>
         </Section>
 
-        <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-line bg-bg/95 py-3 backdrop-blur">
-          <Button variant="primary" onClick={save} disabled={!dirty || busy}><Save size={15} /> {busy ? "Saving…" : "Save settings"}</Button>
-          {dirty && <Button variant="ghost" onClick={() => { setS(orig); setError(""); }}>Discard</Button>}
-          <span className="text-sm text-muted">{dirty ? "Unsaved changes" : status || "All settings saved"}</span>
-          <ErrorNote>{error}</ErrorNote>
-        </div>
+        <SaveBar dirty={dirty} saving={busy} label="Save settings" savedText={status} error={error}
+          onSave={save} onDiscard={() => { setS(orig); setError(""); }} />
       </div>
     </>
   );

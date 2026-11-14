@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from . import config, llm
+from . import config, llm, selection
 from .auth import current_user
 from .db import get_db
 from .models import Clip, Job, Project, Transcript, User
@@ -90,7 +90,10 @@ def transcript(pid: int, user: User = Depends(current_user), db: Session = Depen
     if not t:
         raise HTTPException(404, "No transcript yet")
     return {"language": t.language, "model": t.model, "text": t.text,
-            "segments": [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in t.segments]}
+            # Sentence rows from word timings: batched Whisper emits ~30 s segments, too coarse to navigate.
+            "segments": [{"start": round(x["start"], 2), "end": round(x["end"], 2), "text": x["text"]}
+                         for x in selection.sentences(t.segments)] or
+                        [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in t.segments]}
 
 
 # ---------- clips ----------

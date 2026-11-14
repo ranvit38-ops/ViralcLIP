@@ -3,7 +3,7 @@
 import { Ban, RotateCcw, Wand2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ACTIVE_JOB, api, fmtDate, fmtTime, type Job, type Project, type SystemInfo } from "@/lib/api";
-import { Button, ErrorNote, Field, Input, Progress, Section, Select, StatusBadge } from "@/components/ui";
+import { Button, ErrorNote, Field, Input, Progress, Section, Select, StatusBadge, Loading } from "@/components/ui";
 
 export const LENGTH_PRESETS: Record<string, [number, number]> = {
   "15–30 s": [15, 30], "30–60 s": [30, 60], "60–90 s": [60, 90], "90–180 s": [90, 180],
@@ -65,7 +65,7 @@ export function GeneratePanel({ project, hasTranscript, onStarted }: { project: 
   const activeModel = model || sys?.whisper_default || "small";
   return (
     <Section title={hasTranscript ? "Generate clips again" : "Generate clips"}>
-      {!ready ? <p className="text-sm text-muted">Loading…</p> : project.has_audio === false ? (
+      {!ready ? <Loading /> : project.has_audio === false ? (
         <ErrorNote>This video has no audio track, so it can&apos;t be transcribed or analyzed. Upload a version with sound.</ErrorNote>
       ) : (
         <form onSubmit={start} className="space-y-4">
@@ -118,7 +118,7 @@ export function GeneratePanel({ project, hasTranscript, onStarted }: { project: 
   );
 }
 
-const JOB_LABEL: Record<string, string> = {
+export const JOB_LABEL: Record<string, string> = {
   analyze: "Find clips", render: "Render clip", metadata: "Regenerate metadata",
   youtube_import: "Import from YouTube", twitch_import: "Import from Twitch", youtube_upload: "Upload to YouTube",
 };
