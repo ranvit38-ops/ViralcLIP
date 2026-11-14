@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeft, CalendarClock, Check, Download, Film, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
-import { ScheduleDialog } from "@/components/schedule";
+import { PublishDialog } from "@/components/publish";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
@@ -182,8 +182,12 @@ export default function ClipEditor() {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [publishing, setPublishing] = useState(false);
-  const [ytReady, setYtReady] = useState<boolean | null>(null);
-  useEffect(() => { api<{ configured: boolean }>("/api/youtube/config").then((c) => setYtReady(c.configured)).catch(() => setYtReady(false)); }, []);
+  // Which platforms are set up on the server; the Publish button only appears when at least one is.
+  const [ready, setReady] = useState<{ youtube: boolean; tiktok: boolean } | null>(null);
+  useEffect(() => {
+    const ok = (path: string) => api<{ configured: boolean }>(path).then((c) => c.configured).catch(() => false);
+    Promise.all([ok("/api/youtube/config"), ok("/api/tiktok/config")]).then(([youtube, tiktok]) => setReady({ youtube, tiktok }));
+  }, []);
 
   const loadCaptions = useCallback(async () => {
     const c = await api<{ edited: boolean; lines: CaptionLine[] }>(`/api/clips/${id}/captions`);
@@ -304,11 +308,11 @@ export default function ClipEditor() {
           {clip.review_status !== "approved" && <Button onClick={() => review("approved")} disabled={!!busy}><Check size={15} /> Approve</Button>}
           {clip.review_status !== "rejected" && <Button variant="ghost" onClick={() => review("rejected")} disabled={!!busy}><X size={15} /> Reject</Button>}
           {clip.review_status !== "suggested" && <Button variant="ghost" onClick={() => review("suggested")} disabled={!!busy}><RotateCcw size={15} /> Undo review</Button>}
-          {clip.review_status === "approved" && clip.render_status === "done" && ytReady !== null && (ytReady ? (
-            <Button variant="primary" onClick={() => setPublishing(true)} disabled={!!busy}><CalendarClock size={15} /> Publish to YouTube</Button>
+          {clip.review_status === "approved" && clip.render_status === "done" && ready && (ready.youtube || ready.tiktok ? (
+            <Button variant="primary" onClick={() => setPublishing(true)} disabled={!!busy}><CalendarClock size={15} /> Publish</Button>
           ) : (
             <Link href="/youtube" className="inline-flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm text-muted hover:text-fg">
-              <CalendarClock size={15} /> YouTube setup needed
+              <CalendarClock size={15} /> Publishing setup needed
             </Link>
           ))}
           <Button variant="danger" onClick={del} disabled={!!busy}><Trash2 size={15} /> Delete</Button>
@@ -555,7 +559,7 @@ export default function ClipEditor() {
             onDiscard={() => { setDraft(orig); setLines(linesOrig); setError(""); }} />
         </div>
       </div>
-      {publishing && <ScheduleDialog clipIds={[clip.id]} onClose={() => setPublishing(false)} onDone={() => setPublishing(false)} />}
+      {publishing && <PublishDialog clipIds={[clip.id]} initial={ready?.youtube === false ? "tiktok" : "youtube"} onClose={() => setPublishing(false)} onDone={() => setPublishing(false)} />}
     </>
   );
 }

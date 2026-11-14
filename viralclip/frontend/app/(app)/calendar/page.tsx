@@ -1,11 +1,10 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, MonitorPlay, Music2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { api } from "@/lib/api";
-import { browserTz, dayKey, fmtInZone, parseUtc, type YtUpload } from "@/lib/youtube";
+import { browserTz, dayKey, fmtInZone, parseUtc } from "@/lib/youtube";
 import { TimeZoneSelect } from "@/components/schedule";
-import { groupOf, UploadRow } from "@/components/uploads";
+import { groupOf, isTikTok, itemKey, itemWhen as when, loadQueue, QueueRow, type QueueItem } from "@/components/uploads";
 import { Button, Card, ErrorNote, PageHeader, Loading } from "@/components/ui";
 
 type View = "month" | "week" | "day";
@@ -16,12 +15,12 @@ const keyOf = (d: Date) => d.toISOString().slice(0, 10);
 const addDays = (k: string, n: number) => keyOf(new Date(toDate(k).getTime() + n * 86400000));
 const addMonths = (k: string, n: number) => { const d = toDate(k); return keyOf(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1))); };
 const label = (k: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(undefined, { ...o, timeZone: "UTC" }).format(toDate(k));
-const when = (u: YtUpload) => u.publish_at ?? u.uploaded_at ?? u.created_at;
 
 const TONE: Record<string, string> = {
   Scheduled: "border-sky-500/40 bg-sky-500/10 text-sky-200", Published: "border-emerald-500/40 bg-emerald-500/10 text-emerald-200",
   Failed: "border-red-500/40 bg-red-500/10 text-red-200", Pending: "border-amber-500/40 bg-amber-500/10 text-amber-200",
   Uploading: "border-amber-500/40 bg-amber-500/10 text-amber-200", Uploaded: "border-zinc-500/40 bg-zinc-500/10 text-zinc-200",
+  "Drafts sent": "border-violet-500/40 bg-violet-500/10 text-violet-200",
   Cancelled: "border-zinc-700 bg-transparent text-zinc-500 line-through",
 };
 
@@ -37,18 +36,18 @@ function Calendar() {
   const [tz, setTz] = useState(browserTz());
   const [view, setView] = useState<View>("month");
   const [anchor, setAnchor] = useState(() => dayKey(new Date(), browserTz()));
-  const [items, setItems] = useState<YtUpload[] | null>(null);
-  const [selected, setSelected] = useState<YtUpload | null>(null);
+  const [items, setItems] = useState<QueueItem[] | null>(null);
+  const [selected, setSelected] = useState<QueueItem | null>(null);
   const [error, setError] = useState("");
 
-  const load = useCallback(() => api<YtUpload[]>("/api/youtube/uploads").then((us) => {
+  const load = useCallback(() => loadQueue().then((us) => {
     setItems(us);
-    setSelected((s) => (s ? us.find((u) => u.id === s.id) ?? null : null));
+    setSelected((s) => (s ? us.find((u) => itemKey(u) === itemKey(s)) ?? null : null));
   }).catch((e) => setError(e.message)), []);
   useEffect(() => { load(); }, [load]);
 
   const byDay = useMemo(() => {
-    const m: Record<string, YtUpload[]> = {};
+    const m: Record<string, QueueItem[]> = {};
     for (const u of items ?? []) (m[dayKey(parseUtc(when(u)), tz)] ??= []).push(u);
     for (const k in m) m[k].sort((a, b) => parseUtc(when(a)).getTime() - parseUtc(when(b)).getTime());
     return m;
@@ -63,11 +62,12 @@ function Calendar() {
     : view === "week" ? `${label(days[0], { month: "short", day: "numeric" })} – ${label(days[6], { month: "short", day: "numeric", year: "numeric" })}`
     : label(anchor, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const step = (n: number) => setAnchor(view === "month" ? addMonths(anchor, n) : addDays(anchor, n * (view === "week" ? 7 : 1)));
-  const time = (u: YtUpload) => fmtInZone(when(u), tz, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const time = (u: QueueItem) => fmtInZone(when(u), tz, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
-  const chip = (u: YtUpload, compact: boolean) => (
-    <button key={u.id} onClick={() => setSelected(u)} title={`${u.clip_title} · ${groupOf(u)}`}
+  const chip = (u: QueueItem, compact: boolean) => (
+    <button key={itemKey(u)} onClick={() => setSelected(u)} title={`${isTikTok(u) ? "TikTok" : "YouTube"} · ${u.clip_title} · ${groupOf(u)}`}
       className={`block w-full truncate rounded border px-1.5 py-0.5 text-left text-[11px] ${TONE[groupOf(u)]}`}>
+      {isTikTok(u) ? <Music2 size={10} className="mr-1 inline align-[-1px]" aria-label="TikTok" /> : <MonitorPlay size={10} className="mr-1 inline align-[-1px]" aria-label="YouTube" />}
       <span className="tabular-nums">{time(u)}</span>{!compact && <> · {u.clip_title || `Clip ${u.clip_id}`}</>}
       {compact && <span className="hidden sm:inline"> · {u.clip_title || `Clip ${u.clip_id}`}</span>}
     </button>
@@ -75,7 +75,7 @@ function Calendar() {
 
   return (
     <>
-      <PageHeader title="Publishing Calendar" sub="Scheduled, published, pending and failed uploads." />
+      <PageHeader title="Publishing Calendar" sub="Scheduled, published, pending and failed YouTube uploads and TikTok posts." />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="flex rounded-md border border-line p-0.5">
           {(["month", "week", "day"] as const).map((v) => (
@@ -96,7 +96,7 @@ function Calendar() {
       {!items ? <Loading /> : view === "day" ? (
         <Card className="divide-y divide-line">
           {(byDay[anchor] ?? []).length === 0 ? <p className="p-4 text-sm text-muted">Nothing on this day.</p>
-            : byDay[anchor].map((u) => <div key={u.id} className="p-2">{chip(u, false)}</div>)}
+            : byDay[anchor].map((u) => <div key={itemKey(u)} className="p-2">{chip(u, false)}</div>)}
         </Card>
       ) : (
         <Card className="overflow-hidden">
@@ -131,7 +131,7 @@ function Calendar() {
               <span className="text-muted">{fmtInZone(when(selected), tz)} ({tz})</span>
               <button aria-label="Close" onClick={() => setSelected(null)} className="text-muted hover:text-fg"><X size={18} /></button>
             </div>
-            <UploadRow u={selected} onChange={load} />
+            <QueueRow item={selected} onChange={load} />
           </Card>
         </div>
       )}

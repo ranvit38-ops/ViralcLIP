@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { api, fmtDate, fmtTime, type Clip, type Project } from "@/lib/api";
 import { BulkBar, RENDER_ACTIVE } from "@/components/clips";
-import { ScheduleDialog } from "@/components/schedule";
+import { PublishDialog } from "@/components/publish";
 import { Button, Card, Empty, Input, PageHeader, Select, StatusBadge, Loading } from "@/components/ui";
 
 function ClipsGrid() {
@@ -82,12 +82,12 @@ function ClipsGrid() {
                 extra={ids.length > 0 && (
                   <Button onClick={() => setScheduling(ready)} disabled={ready.length === 0}
                     title={ready.length ? undefined : "Only approved, rendered clips can be published"}>
-                    <CalendarClock size={16} /> Publish to YouTube{ready.length ? ` (${ready.length})` : ""}
+                    <CalendarClock size={16} /> Publish{ready.length ? ` (${ready.length})` : ""}
                   </Button>
                 )} />
             );
           })()}
-          {scheduling && <ScheduleDialog clipIds={scheduling} onClose={() => setScheduling(null)} onDone={() => { setScheduling(null); load(); }} />}
+          {scheduling && <PublishDialog clipIds={scheduling} onClose={() => setScheduling(null)} onDone={() => { setScheduling(null); load(); }} />}
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {clips.map((c) => (
               <Card key={c.id} className={`relative overflow-hidden transition hover:border-zinc-600 ${selected.has(c.id) ? "border-accent" : ""}`}>

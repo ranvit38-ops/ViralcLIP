@@ -19,6 +19,7 @@ type Vod = { id: string; title: string; created_at: string; duration_seconds: nu
 type State = {
   settings: Settings; twitch_configured: boolean; twitch_missing: string[]; twitch_accounts: TwitchAccount[];
   youtube_accounts: { id: number; channel_title: string; status: string; autopublish_enabled: boolean }[];
+  tiktok_accounts?: { id: number; display_name: string; status: string; autopublish_enabled: boolean }[];
   waiting_review: number; events: { id: number; kind: string; message: string; project_id: number | null; created_at: string }[];
 };
 
@@ -117,7 +118,10 @@ function Automation() {
 
   const preset = presetFor(s.analyze.min_len, s.analyze.max_len);
   const watching = s.twitch_account_ids.length + s.youtube_account_ids.length;
-  const publishing = st.youtube_accounts.filter((a) => a.autopublish_enabled);
+  const publishing = [
+    ...st.youtube_accounts.filter((a) => a.autopublish_enabled).map((a) => a.channel_title),
+    ...(st.tiktok_accounts ?? []).filter((a) => a.autopublish_enabled).map((a) => `${a.display_name} (TikTok)`),
+  ];
 
   return (
     <>
@@ -259,11 +263,25 @@ function Automation() {
 
         <Step n={5} title="Publish">
           {publishing.length ? (
-            <p className="text-sm">Auto-publish is on for {publishing.map((a) => a.channel_title).join(", ")}. Approved, rendered clips are scheduled into your daily slots.</p>
+            <p className="text-sm">Auto-publish is on for {publishing.join(", ")}. Approved, rendered clips are scheduled into your daily slots.</p>
           ) : (
             <p className="text-sm text-amber-200">No auto-publish rule is on, so rendered clips will wait for you to schedule them.</p>
           )}
           <Link href="/youtube" className="mt-2 inline-flex items-center gap-1 text-sm text-accent hover:underline">Set up auto-publish rules in YouTube Studio <ExternalLink size={13} /></Link>
+          <div className="mt-4 border-t border-line pt-3">
+            <h3 className="mb-2 text-sm font-medium">TikTok</h3>
+            {st.tiktok_accounts?.length ? (
+              <ul className="space-y-1.5">
+                {st.tiktok_accounts.map((a) => (
+                  <li key={a.id} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="min-w-0 truncate">{a.display_name}</span>
+                    {a.status !== "ok" ? <Badge tone="red">reconnect required</Badge> : a.autopublish_enabled ? <Badge tone="green">auto-publish on</Badge> : <Badge>auto-publish off</Badge>}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-sm text-muted">No TikTok accounts connected.</p>}
+            <Link href="/tiktok" className="mt-2 inline-flex items-center gap-1 text-sm text-accent hover:underline">Manage TikTok accounts and rules <ExternalLink size={13} /></Link>
+          </div>
         </Step>
 
         <Step n={6} title="Storage">
