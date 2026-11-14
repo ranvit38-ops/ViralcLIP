@@ -459,13 +459,11 @@ def _render(ctx, src, pid, cid, start, end, sw, sh, fps, st, segments, overrides
     vf += "[v]"
 
     out_fps = min(fps or 30, 60)
-    _run_ffmpeg(["-y", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-filter_complex", vf,
-                 "-map", "[v]", "-map", "0:a?", "-r", f"{out_fps:.3f}",
-                 "-c:v", "libx264", "-preset", os.getenv("RENDER_PRESET", "medium"), "-crf", os.getenv("RENDER_CRF", "18"),
-                 "-profile:v", "high", "-pix_fmt", "yuv420p",
-                 "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-                 "-movflags", "+faststart", tmp.name], dur, ctx, out_dir, 0.08, 0.97)
-    tmp.replace(final)
+    try:
+        _encode(ctx, src, start, dur, vf, out_fps, tmp, out_dir)
+    finally:
+        tmp.unlink(missing_ok=True)  # partial output from a failed/cancelled render
+        (out_dir / f"{cid}.ass").unlink(missing_ok=True)
     subprocess.run([config.FFMPEG, "-v", "error", "-y", "-ss", f"{min(1.0, dur / 2):.2f}", "-i", str(final),
                     "-frames:v", "1", "-vf", "scale=360:-2", "-q:v", "3", str(out_dir / f"{cid}.jpg")], timeout=120)
     with SessionLocal() as db:
@@ -475,3 +473,13 @@ def _render(ctx, src, pid, cid, start, end, sw, sh, fps, st, segments, overrides
             c.thumbnail_path = f"clips/{cid}.jpg" if (out_dir / f"{cid}.jpg").exists() else None
             c.render_settings = {**(c.render_settings or {}), "_rendered_layout": layout}
             db.commit()
+
+
+def _encode(ctx, src, start, dur, vf, out_fps, tmp, out_dir):
+    _run_ffmpeg(["-y", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-filter_complex", vf,
+                 "-map", "[v]", "-map", "0:a?", "-r", f"{out_fps:.3f}",
+                 "-c:v", "libx264", "-preset", os.getenv("RENDER_PRESET", "medium"), "-crf", os.getenv("RENDER_CRF", "18"),
+                 "-profile:v", "high", "-pix_fmt", "yuv420p",
+                 "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+                 "-movflags", "+faststart", tmp.name], dur, ctx, out_dir, 0.08, 0.97)
+    tmp.replace(out_dir / tmp.name.replace(".tmp.mp4", ".mp4"))

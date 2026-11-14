@@ -1,4 +1,6 @@
+import atexit
 import os
+import shutil
 import subprocess
 import tempfile
 import uuid
@@ -7,6 +9,7 @@ from pathlib import Path
 import pytest
 
 _tmp = tempfile.mkdtemp(prefix="vc-test-")
+atexit.register(shutil.rmtree, _tmp, True)
 os.environ["VC_DATA_DIR"] = _tmp  # must be set before the app is imported
 
 from fastapi.testclient import TestClient  # noqa: E402
