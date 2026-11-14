@@ -118,13 +118,16 @@ class Job(Base):
     __tablename__ = "jobs"
     id: Mapped[int] = _id()
     project_id: Mapped[int] = _fk("projects.id")
-    job_type: Mapped[str] = mapped_column(String(30))  # analyze | render
+    clip_id: Mapped[int | None] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"), index=True)
+    job_type: Mapped[str] = mapped_column(String(30))  # analyze | render | (youtube jobs)
     # queued | running | cancel_requested | done | failed | cancelled
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
     progress: Mapped[float] = mapped_column(Float, default=0)  # 0..1, only from real work done
     message: Mapped[str] = mapped_column(String(300), default="")
     error: Mapped[str | None] = mapped_column(Text)
     params: Mapped[dict] = mapped_column(JSON, default=dict)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    run_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # e.g. wait for quota reset
     created_at: Mapped[datetime] = _created()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

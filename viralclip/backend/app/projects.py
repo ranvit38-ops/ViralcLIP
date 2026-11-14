@@ -191,8 +191,18 @@ def upload_complete(pid: int, user: User = Depends(current_user), db: Session = 
     have = part.stat().st_size if part.exists() else 0
     if have != p.upload_size:
         raise HTTPException(409, detail={"message": "Upload incomplete", "offset": have})
+    part.rename(source_path(p))
+    try:
+        finalize_source(db, p)
+    except media.MediaError as e:
+        raise HTTPException(422, str(e))
+    return project_out(p, db)
+
+
+def finalize_source(db: Session, p: Project) -> None:
+    """Validate source_path(p), store its metadata and thumbnail. Shared by upload and link import.
+    On a bad file: marks the project failed, deletes the file, commits, re-raises MediaError."""
     src = source_path(p)
-    part.rename(src)
     try:
         meta = media.probe(src)
         media.thumbnail(src, project_dir(p.id) / "thumb.jpg", at=min(meta["duration"] * 0.1, 5))
@@ -200,14 +210,13 @@ def upload_complete(pid: int, user: User = Depends(current_user), db: Session = 
         p.status, p.error = "failed", str(e)
         src.unlink(missing_ok=True)
         db.commit()
-        raise HTTPException(422, str(e))
+        raise
     for k, v in meta.items():
         setattr(p, k, v)
     p.status, p.error = "uploaded", None
     if not meta["has_audio"]:
         p.error = "This video has no audio track, so it can't be transcribed or captioned."
     db.commit()
-    return project_out(p, db)
 
 
 # ---------- dashboard ----------
