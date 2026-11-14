@@ -67,7 +67,8 @@ export type CaptionStyle = {
 
 export type RenderSettings = {
   aspect: string; layout: string; crop_x: number | null; captions: boolean; preset: string; position: string;
-  style: CaptionStyle; _rendered_layout?: string;
+  style: CaptionStyle; remove_pauses: boolean; zoom: boolean; hook: boolean; hook_text: string | null;
+  _rendered_layout?: string; _rendered_duration?: number; _cuts?: number;
 };
 
 export type CaptionLine = { start: number; end: number; text: string };

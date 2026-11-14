@@ -1,12 +1,13 @@
 "use client";
 
-import { Clapperboard } from "lucide-react";
+import { CalendarClock, Clapperboard } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { api, fmtDate, fmtTime, type Clip, type Project } from "@/lib/api";
 import { BulkBar, RENDER_ACTIVE } from "@/components/clips";
-import { Card, Empty, Input, PageHeader, Select, StatusBadge } from "@/components/ui";
+import { ScheduleDialog } from "@/components/schedule";
+import { Button, Card, Empty, Input, PageHeader, Select, StatusBadge } from "@/components/ui";
 
 function ClipsGrid() {
   const params = useSearchParams();
@@ -16,6 +17,7 @@ function ClipsGrid() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [q, setQ] = useState(params.get("q") ?? "");
+  const [scheduling, setScheduling] = useState<number[] | null>(null);
 
   const filters = { project_id: params.get("project_id") ?? "", review_status: params.get("review_status") ?? "", render_status: params.get("render_status") ?? "" };
   const query = params.toString();
@@ -73,8 +75,19 @@ function ClipsGrid() {
         </Empty>
       ) : (
         <>
-          {/* YouTube scheduling mounts its own action here via BulkBar's `extra` prop once that feature ships. */}
-          <BulkBar ids={ids} all={ids.length === clips.length} onSelectAll={(v) => setSelected(v ? new Set(clips.map((c) => c.id)) : new Set())} onDone={load} />
+          {(() => {
+            const ready = clips.filter((c) => selected.has(c.id) && c.review_status === "approved" && c.render_status === "done").map((c) => c.id);
+            return (
+              <BulkBar ids={ids} all={ids.length === clips.length} onSelectAll={(v) => setSelected(v ? new Set(clips.map((c) => c.id)) : new Set())} onDone={load}
+                extra={ids.length > 0 && (
+                  <Button onClick={() => setScheduling(ready)} disabled={ready.length === 0}
+                    title={ready.length ? undefined : "Only approved, rendered clips can be published"}>
+                    <CalendarClock size={16} /> Publish to YouTube{ready.length ? ` (${ready.length})` : ""}
+                  </Button>
+                )} />
+            );
+          })()}
+          {scheduling && <ScheduleDialog clipIds={scheduling} onClose={() => setScheduling(null)} onDone={() => { setScheduling(null); load(); }} />}
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {clips.map((c) => (
               <Card key={c.id} className={`relative overflow-hidden transition hover:border-zinc-600 ${selected.has(c.id) ? "border-accent" : ""}`}>

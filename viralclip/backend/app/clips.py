@@ -134,7 +134,7 @@ class ClipUpdate(BaseModel):
     caption_overrides: list[CaptionLine] | None = None
 
 
-RENDER_KEYS = {"aspect": {"9:16", "1:1", "4:5", "16:9"}, "layout": {"auto", "crop", "fit"},
+RENDER_KEYS = {"aspect": {"9:16", "1:1", "4:5", "16:9"}, "layout": {"auto", "crop", "fit", "stream"},
                "preset": {"bold", "karaoke", "clean", "minimal"}, "position": {"top", "middle", "lower", "bottom"}}
 STYLE_KEYS = {"font", "size", "color", "highlight", "outline", "outline_width", "uppercase", "words", "box", "pop", "bold", "shadow"}
 
@@ -146,8 +146,10 @@ def validate_render_settings(rs: dict) -> dict:
             if v not in RENDER_KEYS[k]:
                 raise HTTPException(422, f"Invalid {k}")
             out[k] = v
-        elif k == "captions":
+        elif k in ("captions", "remove_pauses", "zoom", "hook"):
             out[k] = bool(v)
+        elif k == "hook_text":
+            out[k] = (str(v).strip()[:100] or None) if v is not None else None
         elif k == "crop_x":
             out[k] = None if v is None else max(0.0, min(1.0, float(v)))
         elif k == "style":
@@ -194,8 +196,9 @@ def update_clip(cid: int, body: ClipUpdate, user: User = Depends(current_user), 
         c.hashtags = list(dict.fromkeys(t for t in tags if t))
     if changes.get("render_settings") is not None:
         new = {**(c.render_settings or {}), **validate_render_settings(changes["render_settings"])}
-        new.pop("_rendered_layout", None)
-        if new != {k: v for k, v in (c.render_settings or {}).items() if k != "_rendered_layout"}:
+        for k in ("_rendered_layout", "_rendered_duration", "_cuts"):
+            new.pop(k, None)
+        if new != {k: v for k, v in (c.render_settings or {}).items() if not k.startswith("_")}:
             c.render_settings, visual = new, True
     if "caption_overrides" in changes and changes["caption_overrides"] is not None:
         lines = [ln for ln in changes["caption_overrides"] if ln["end"] > ln["start"] and ln["text"].strip()]

@@ -118,7 +118,10 @@ export function GeneratePanel({ project, hasTranscript, onStarted }: { project: 
   );
 }
 
-const JOB_LABEL: Record<string, string> = { analyze: "Find clips", render: "Render clip", metadata: "Regenerate metadata" };
+const JOB_LABEL: Record<string, string> = {
+  analyze: "Find clips", render: "Render clip", metadata: "Regenerate metadata",
+  youtube_import: "Import from YouTube", twitch_import: "Import from Twitch", youtube_upload: "Upload to YouTube",
+};
 
 export function JobsList({ jobs, onChange }: { jobs: Job[]; onChange: () => void }) {
   const [error, setError] = useState("");

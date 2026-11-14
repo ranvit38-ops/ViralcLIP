@@ -11,14 +11,16 @@ type S = {
   defaults: { min_len: number; max_len: number; count: number; language: string };
   whisper_model: string | null;
   metadata: { audience: string; category: string; tone: string; title_style: string; description_length: string; hashtag_count: number; language: string };
-  render: { aspect: string; layout: string; preset: string; position: string; captions: boolean };
+  render: { aspect: string; layout: string; preset: string; position: string; captions: boolean;
+            remove_pauses: boolean; zoom: boolean; hook: boolean };
 };
 
 const EMPTY: S = {
   defaults: { min_len: 30, max_len: 60, count: 8, language: "" },
   whisper_model: null,
   metadata: { audience: "", category: "", tone: "", title_style: "", description_length: "short", hashtag_count: 5, language: "" },
-  render: { aspect: "9:16", layout: "auto", preset: "bold", position: "lower", captions: true },
+  render: { aspect: "9:16", layout: "auto", preset: "bold", position: "lower", captions: true,
+            remove_pauses: true, zoom: true, hook: true },
 };
 
 function merge(raw: Record<string, any>): S {
@@ -96,8 +98,17 @@ export default function SettingsPage() {
             <Field label="Layout">
               <Select value={s.render.layout} onChange={(e) => upd("render", { layout: e.target.value })}>
                 <option value="auto">Auto</option><option value="crop">Crop (fill frame)</option><option value="fit">Fit (blurred background)</option>
+                <option value="stream">Streamer split (facecam + gameplay)</option>
               </Select>
             </Field>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+            {([["remove_pauses", "Jump cuts (remove pauses)"], ["zoom", "Punch-in zoom"], ["hook", "Hook title (first 3 s)"]] as const).map(([k, label]) => (
+              <label key={k} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={s.render[k]} onChange={(e) => upd("render", { [k]: e.target.checked })} className="size-4 accent-[var(--color-accent)]" />
+                {label}
+              </label>
+            ))}
           </div>
         </Section>
 

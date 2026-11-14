@@ -98,7 +98,7 @@ export default function ProjectPage() {
   const ids = shown.filter((c) => selected.has(c.id)).map((c) => c.id);
   const rejected = clips.length - clips.filter((c) => c.review_status !== "rejected").length;
   const analyzing = p.jobs?.some((j) => j.job_type === "analyze" && ACTIVE_JOB.includes(j.status));
-  const playable = p.status !== "uploading" && p.status !== "failed";
+  const playable = !["uploading", "importing", "failed"].includes(p.status);
 
   return (
     <>
@@ -123,6 +123,11 @@ export default function ProjectPage() {
       <div className="space-y-4">
         <ErrorNote>{error || (p.has_audio === false ? null : p.error)}</ErrorNote>
         {p.status === "uploading" && <ResumeUpload p={p} onDone={load} />}
+        {p.status === "importing" && (
+          <p className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-muted">
+            Importing this video from the link. Progress is shown below; you can leave this page.
+          </p>
+        )}
         {playable && (
           <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
             <video ref={video} src={`/api/projects/${p.id}/source`} poster={p.thumbnail_url ?? undefined} controls preload="metadata" className="aspect-video w-full rounded-lg border border-line bg-black" />

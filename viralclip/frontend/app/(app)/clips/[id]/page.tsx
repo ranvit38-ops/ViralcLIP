@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowLeft, Check, Download, Film, Plus, RotateCcw, Save, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, CalendarClock, Check, Download, Film, Plus, RotateCcw, Save, Sparkles, Trash2, X } from "lucide-react";
+import { ScheduleDialog } from "@/components/schedule";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
@@ -12,7 +13,7 @@ import { Badge, Button, ErrorNote, Field, Input, Section, Select, StatusBadge, T
 
 type Draft = {
   start: number; end: number; title: string; description: string; hashtags: string[];
-  rs: Omit<RenderSettings, "_rendered_layout">;
+  rs: Omit<RenderSettings, "_rendered_layout" | "_rendered_duration" | "_cuts">;
 };
 
 const ASPECTS: Record<string, [number, number]> = { "9:16": [1080, 1920], "1:1": [1080, 1080], "4:5": [1080, 1350], "16:9": [1920, 1080] };
@@ -20,11 +21,12 @@ const LAYOUT_HELP: Record<string, string> = {
   auto: "Follows the speaker's face when one is clearly visible; otherwise shows the whole frame.",
   crop: "Fills the frame by cropping. Follows faces, or uses the position you set below.",
   fit: "Shows the whole frame on a blurred background. Best for gameplay and screen recordings.",
+  stream: "Streamer split screen: your facecam on top, gameplay below. Auto picks this when it finds a facecam.",
 };
 const POSITION_TOP: Record<string, string> = { top: "12%", middle: "50%", lower: "76%", bottom: "92%" };
 
 function draftFrom(c: Clip): Draft {
-  const { _rendered_layout, ...rs } = c.render_settings; // eslint-disable-line @typescript-eslint/no-unused-vars
+  const { _rendered_layout, _rendered_duration, _cuts, ...rs } = c.render_settings; // eslint-disable-line @typescript-eslint/no-unused-vars
   return { start: c.start, end: c.end, title: c.title, description: c.description, hashtags: [...c.hashtags], rs: structuredClone(rs) };
 }
 
@@ -61,7 +63,8 @@ function FramePreview({ project, rs, sample }: { project: Project; rs: Draft["rs
           )}
         </div>
         <p className="mt-1.5 max-w-64 text-[11px] text-muted">
-          {rs.layout === "fit" ? "Whole frame is shown, centered on a blurred copy." :
+          {rs.layout === "stream" ? "Facecam (found at render time) on top; the gameplay area shown here goes below." :
+            rs.layout === "fit" ? "Whole frame is shown, centered on a blurred copy." :
             rs.crop_x == null ? (rs.layout === "auto" ? "Face tracking picks the framing at render time (dashed = starting guess)." : "Face tracking picks the position at render time.") :
               "Fixed crop position."}
         </p>
@@ -164,6 +167,7 @@ export default function ClipEditor() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
+  const [publishing, setPublishing] = useState(false);
 
   const loadCaptions = useCallback(async () => {
     const c = await api<{ edited: boolean; lines: CaptionLine[] }>(`/api/clips/${id}/captions`);
@@ -282,6 +286,9 @@ export default function ClipEditor() {
           {clip.review_status !== "approved" && <Button onClick={() => review("approved")} disabled={!!busy}><Check size={15} /> Approve</Button>}
           {clip.review_status !== "rejected" && <Button variant="ghost" onClick={() => review("rejected")} disabled={!!busy}><X size={15} /> Reject</Button>}
           {clip.review_status !== "suggested" && <Button variant="ghost" onClick={() => review("suggested")} disabled={!!busy}><RotateCcw size={15} /> Undo review</Button>}
+          {clip.review_status === "approved" && clip.render_status === "done" && (
+            <Button variant="primary" onClick={() => setPublishing(true)} disabled={!!busy}><CalendarClock size={15} /> Publish to YouTube</Button>
+          )}
           <Button variant="danger" onClick={del} disabled={!!busy}><Trash2 size={15} /> Delete</Button>
         </div>
       </div>
@@ -312,6 +319,13 @@ export default function ClipEditor() {
             </Button>
             {hasRender && <a href={`/api/clips/${clip.id}/video?download=true`} className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-panel-2 px-3 text-sm hover:bg-line"><Download size={15} /> Download MP4</a>}
           </div>
+          {hasRender && clip.render_settings._rendered_duration != null && (
+            <p className="text-xs text-muted">
+              Rendered {clip.render_settings._rendered_duration.toFixed(1)} s
+              {clip.render_settings._cuts ? ` · ${clip.render_settings._cuts} pause${clip.render_settings._cuts === 1 ? "" : "s"} cut` : ""}
+              {clip.render_settings._rendered_layout ? ` · ${clip.render_settings._rendered_layout} layout` : ""}
+            </p>
+          )}
           <ScoreBreakdown clip={clip} />
         </div>
 
@@ -346,6 +360,7 @@ export default function ClipEditor() {
               <Field label="Layout" hint={LAYOUT_HELP[draft.rs.layout]}>
                 <Select value={draft.rs.layout} onChange={(e) => setRs({ layout: e.target.value })}>
                   <option value="auto">Auto</option><option value="crop">Crop (fill frame)</option><option value="fit">Fit (blurred background)</option>
+                  <option value="stream">Streamer split (facecam + gameplay)</option>
                 </Select>
               </Field>
             </div>
@@ -363,6 +378,27 @@ export default function ClipEditor() {
               </div>
             )}
             <div className="mt-4"><FramePreview project={project} rs={draft.rs} sample={lines[0]?.text ?? ""} /></div>
+          </Section>
+
+          <Section title="Shorts effects">
+            <div className="space-y-3">
+              {([
+                ["remove_pauses", "Jump cuts", "Cuts out pauses longer than 0.6 s between words, so the clip moves fast."],
+                ["zoom", "Punch-in zoom", "Zooms in a little on every other sentence (face-tracked crops only)."],
+                ["hook", "Hook title", "Shows a title in a box for the first 3 seconds to stop the scroll."],
+              ] as const).map(([key, label, help]) => (
+                <label key={key} className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" checked={!!draft.rs[key]} onChange={(e) => setRs({ [key]: e.target.checked })} className="mt-0.5 size-4 accent-[var(--color-accent)]" />
+                  <span><span className="font-medium">{label}</span><span className="block text-xs text-muted">{help}</span></span>
+                </label>
+              ))}
+              {draft.rs.hook && (
+                <Field label="Hook text" hint="Leave empty to use the clip title.">
+                  <Input value={draft.rs.hook_text ?? ""} maxLength={100} placeholder={draft.title}
+                    onChange={(e) => setRs({ hook_text: e.target.value || null })} />
+                </Field>
+              )}
+            </div>
           </Section>
 
           <Section title="Captions" actions={
@@ -502,6 +538,7 @@ export default function ClipEditor() {
           </div>
         </div>
       </div>
+      {publishing && <ScheduleDialog clipIds={[clip.id]} onClose={() => setPublishing(false)} onDone={() => setPublishing(false)} />}
     </>
   );
 }
