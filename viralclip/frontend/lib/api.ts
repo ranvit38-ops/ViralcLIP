@@ -59,3 +59,52 @@ export type Project = {
   video_codec: string | null; audio_codec: string | null; has_audio: boolean | null;
   created_at: string; updated_at: string; thumbnail_url: string | null; clip_count?: number; jobs?: Job[];
 };
+
+export type CaptionStyle = {
+  font: string; size: number; color: string; highlight: string; outline: string; outline_width: number;
+  shadow: number; uppercase: boolean; words: number; box: boolean; pop: boolean; bold: boolean;
+};
+
+export type RenderSettings = {
+  aspect: string; layout: string; crop_x: number | null; captions: boolean; preset: string; position: string;
+  style: CaptionStyle; _rendered_layout?: string;
+};
+
+export type CaptionLine = { start: number; end: number; text: string };
+
+export type Clip = {
+  id: number; project_id: number; project_name: string; start: number; end: number; duration: number;
+  transcript_excerpt: string; score: number; score_breakdown: Record<string, any>; reason: string;
+  review_status: "suggested" | "approved" | "rejected"; title: string; title_options: string[]; title_edited: boolean;
+  description: string; hashtags: string[]; render_status: string; caption_overrides: CaptionLine[];
+  render_settings: RenderSettings; video_url: string | null; thumbnail_url: string; created_at: string; job: Job | null;
+};
+
+export type SystemInfo = {
+  whisper_models: string[]; whisper_downloaded: string[]; whisper_default: string; whisper_device: string;
+  llm_configured: boolean; llm_model: string | null; caption_presets: Record<string, CaptionStyle>; fonts: string[];
+  disk_free: number; disk_total: number; storage_used: number; job_running: boolean;
+};
+
+export const ACTIVE_JOB = ["queued", "running", "cancel_requested"];
+
+/** POST JSON, receive a file, and hand it to the browser as a download. */
+export async function downloadPost(path: string, json: unknown, filename: string) {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new ApiError(res.status, typeof body?.detail === "string" ? body.detail : `Download failed (${res.status})`);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement("a"), { href: url, download: filename });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/** m:ss.s for clip boundaries. */
+export function fmtTime(s: number) {
+  const m = Math.floor(s / 60);
+  return `${m}:${(s - m * 60).toFixed(1).padStart(4, "0")}`;
+}

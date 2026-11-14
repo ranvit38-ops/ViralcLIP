@@ -110,7 +110,7 @@ def basic_metadata(text: str, prefs: dict) -> dict:
     titles = titles or [clean(text[:80]).rstrip(" ,.")]
     n = int(prefs.get("hashtag_count") or 5)
     tags = _keywords(text, max(1, n - 1)) + ["shorts"]
-    desc_len = prefs.get("description_length", "short")
+    desc_len = prefs.get("description_length") or "short"
     desc = " ".join(clean(s) if i == 0 else s for i, s in enumerate(
         [s for s in sents if not OFFTOPIC.search(s)][: 2 if desc_len == "short" else 4]))
     return {"titles": titles, "description": desc, "hashtags": tags[:n], "method": "basic"}
@@ -141,11 +141,11 @@ def generate_metadata(text: str, prefs: dict, language: str | None = None) -> di
         "You write YouTube Shorts metadata for a clip, using ONLY what the transcript says. "
         "Never invent facts, numbers or claims. No clickbait that misrepresents the content, no ALL CAPS titles, "
         "at most one ! or ? per title, titles under 70 characters. "
-        f"Title style preference: {prefs.get('title_style', 'mixed: curiosity, educational, question, direct')}. "
-        f"Tone: {prefs.get('tone', 'natural')}. Audience: {prefs.get('audience', 'general')}. "
-        f"Category: {prefs.get('category', 'auto-detect')}. Write everything in {lang_name} only. "
+        f"Title style preference: {prefs.get('title_style') or 'mixed: curiosity, educational, question, direct'}. "
+        f"Tone: {prefs.get('tone') or 'natural'}. Audience: {prefs.get('audience') or 'general'}. "
+        f"Category: {prefs.get('category') or 'auto-detect'}. Write everything in {lang_name} only. "
         "Refer to the speaker neutrally; never assume their gender. "
-        f"Description: {'1-2' if prefs.get('description_length', 'short') == 'short' else '3-5'} sentences, natural keywords, no hashtags. "
+        f"Description: {'1-2' if (prefs.get('description_length') or 'short') == 'short' else '3-5'} sentences, natural keywords, no hashtags. "
         f"Hashtags: exactly {n}, specific to the subject, no generic spam, no '#' prefix. "
         'Give exactly 4 different titles in different styles. Reply with a JSON object with keys '
         '"titles" (array of 4 strings), "description" (string) and "hashtags" (array of strings).')
