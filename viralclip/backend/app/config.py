@@ -30,4 +30,12 @@ TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID", "")
 TWITCH_CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET", "")
 TWITCH_REDIRECT_URI = os.getenv("TWITCH_REDIRECT_URI", "http://localhost:3000/api/twitch/callback")
 
+# TikTok (developers.tiktok.com app: Login Kit + Content Posting API). See docs/TIKTOK_SETUP.md.
+TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY", "")
+TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "")
+TIKTOK_REDIRECT_URI = os.getenv("TIKTOK_REDIRECT_URI", "http://localhost:3000/api/tiktok/callback")
+# Unaudited apps may only post privately (SELF_ONLY); drafts to the inbox are the useful default then.
+TIKTOK_AUDITED = os.getenv("TIKTOK_AUDITED", "false").lower() == "true"
+TIKTOK_DAILY_POST_LIMIT = int(os.getenv("TIKTOK_DAILY_POST_LIMIT", "15"))
+
 DATA_DIR.mkdir(parents=True, exist_ok=True)

@@ -17,21 +17,24 @@ _Last updated: all planned phases are implemented. What's verified and what isn'
 | Jobs | DB-backed worker; real progress; cancel and retry; restart-safe; stale jobs requeued; parallel workers | pytest |
 | YouTube | OAuth with multiple channels; Fernet-encrypted tokens; refresh and revoke; resumable `videos.insert` that resumes the same session after a crash (no duplicates); quota-aware queue (default 6 per channel per day); schedule and bulk schedule (daily, every other day, weekly, custom) with preview; calendar; queue with pause/resume/cancel/retry; auto-publish rules (approved clips only); own-channel link import (yt-dlp, up to 4K) | pytest with Google mocked + browser with Google mocked |
 | Twitch | OAuth with multiple accounts; VOD list; own-VOD import (yt-dlp); dedupe | pytest with Twitch and yt-dlp mocked |
+| TikTok | Login Kit OAuth with multiple accounts; Fernet-encrypted tokens with refresh and revoke; direct post (chunked FILE_UPLOAD, status polling) and draft-to-inbox mode; unaudited apps limited to SELF_ONLY; per-account daily cap (default 15); worker-run scheduling (TikTok has no publish-at); duplicate guard; auto-publish rules (approved + rendered only) | pytest with TikTok mocked (SQLite and Postgres 16) |
 | Automation | Watches Twitch and YouTube sources every 30 min → import → analyze → opt-in auto-approve (top N, minimum score) → render → auto-publish; one download at a time; skips live streams and back catalog; optional source cleanup; activity log | pytest (chain, idempotency, isolation) + browser (settings, toggle, log) |
 | Settings | Defaults for clip length/count/aspect/layout/captions/effects, metadata preferences, model; system info (disk, models, LLM) | Browser (persistence) |
 | Infrastructure | SQLite or PostgreSQL; Alembic migrations, safe when processes start concurrently; Docker Compose (Ubuntu 24.04 image) | Suite passes on Postgres 16; images built and run end to end |
 
-**Tests:** backend 50 passed (`cd backend && .venv/bin/python -m pytest -q`). Frontend tsc, eslint and build are clean. The browser end-to-end script (`frontend/e2e/clips.e2e.cjs`) passed 38 checks, and a separate whole-product smoke test covered every page at desktop and 390 px with no console errors.
+**Tests:** backend 68 passed (`cd backend && .venv/bin/python -m pytest -q`). Frontend tsc, eslint and build are clean. The browser end-to-end script (`frontend/e2e/clips.e2e.cjs`) passed 38 checks, and a separate whole-product smoke test covered every page at desktop and 390 px with no console errors.
 
 ## Not verified (impossible without your real accounts)
 
 - **Real Google sign-in and real YouTube uploads.** All tests use a mocked Google. Before trusting it, connect a channel and upload one private test clip; follow `docs/YOUTUBE_SETUP.md`.
 - **Real Twitch sign-in and real VOD downloads.** Mocked too. Follow `docs/TWITCH_SETUP.md`.
+- **Real TikTok sign-in and posting.** Mocked, and written without access to TikTok's developer docs. Items to check are marked `UNVERIFIED` in `backend/app/tiktok.py` and "(verify)" in `docs/TIKTOK_SETUP.md`.
 - **yt-dlp against live YouTube and Twitch.** It works today, but it breaks whenever those sites change. Update it with `pip install -U yt-dlp`.
 
 ## Known limits
 
 - **Unaudited Google Cloud projects can only upload private videos.** Public or scheduled publishing needs Google's audit. Default quota is about 6 uploads a day per Cloud project, not per channel.
+- **TikTok scheduling runs in our worker** (TikTok has no publish-at), so it only works while ViralClip is running. Unaudited TikTok apps can only post privately or send drafts.
 - **Face detection uses OpenCV's Haar cascade.** It's fast and needs no download, but it misses profile and turned faces. Speaker detection is "largest face"; there is no diarization.
 - **Small local LLMs (3B) invent details.** Use 7B+ for titles you'd publish unreviewed.
 - **No emoji in captions.** libass can't render color emoji.
