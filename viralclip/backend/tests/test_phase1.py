@@ -100,3 +100,14 @@ def test_requires_auth():
     anon = TestClient(app)
     for url in ["/api/projects", "/api/dashboard", "/api/projects/1"]:
         assert anon.get(url).status_code == 401
+
+
+def test_login_throttled_after_repeated_failures():
+    from app import auth
+    c = new_client()
+    auth._failures.clear()
+    for _ in range(auth.MAX_FAILURES):
+        assert c.post("/api/auth/login", json={"email": c.email, "password": "wrong-pass"}).status_code == 401
+    # even the right password is refused while locked out
+    assert c.post("/api/auth/login", json={"email": c.email, "password": "password123"}).status_code == 429
+    auth._failures.clear()

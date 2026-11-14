@@ -3,6 +3,8 @@ import hashlib
 import hmac
 import re
 import secrets
+import time
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
@@ -77,10 +79,28 @@ def register(c: Credentials, resp: Response, db: Session = Depends(get_db)):
     return {"id": user.id, "email": user.email}
 
 
+# ponytail: in-memory, per API process (the API runs as one process). Move to the DB if you scale out.
+_failures: dict[str, list[float]] = defaultdict(list)
+MAX_FAILURES, WINDOW = 10, 15 * 60
+
+
+def _too_many(key: str) -> bool:
+    cutoff = time.time() - WINDOW
+    _failures[key] = [t for t in _failures[key] if t > cutoff]
+    return len(_failures[key]) >= MAX_FAILURES
+
+
 @router.post("/login")
 def login(c: Credentials, resp: Response, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == c.email.strip().lower()))
+    email = c.email.strip().lower()
+    # Keyed by email only: behind the Next.js proxy every client IP is 127.0.0.1.
+    keys = (f"e:{email}",)
+    if any(_too_many(k) for k in keys):
+        raise HTTPException(429, "Too many failed sign-in attempts. Wait 15 minutes and try again.")
+    user = db.scalar(select(User).where(User.email == email))
     if not user or not verify_password(c.password, user.password_hash):
+        for k in keys:
+            _failures[k].append(time.time())
         raise HTTPException(401, "Incorrect email or password")
     _start_session(db, user, resp)
     return {"id": user.id, "email": user.email}
