@@ -103,7 +103,7 @@ class Clip(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     hashtags: Mapped[list] = mapped_column(JSON, default=list)
 
-    # render: none | queued | rendering | done | failed
+    # render: none | queued | rendering | done | outdated (settings changed since) | failed
     render_status: Mapped[str] = mapped_column(String(20), default="none", index=True)
     render_settings: Mapped[dict] = mapped_column(JSON, default=dict)  # aspect, captions, crop
     caption_overrides: Mapped[list] = mapped_column(JSON, default=list)  # user-edited caption lines
@@ -133,3 +133,4 @@ class Job(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     project: Mapped[Project] = relationship(back_populates="jobs")
+    clip: Mapped["Clip | None"] = relationship()

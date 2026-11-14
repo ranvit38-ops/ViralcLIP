@@ -46,7 +46,7 @@ class Ctx:
 
 def handlers():
     from . import pipeline
-    h = {"analyze": pipeline.analyze, "render": pipeline.render}
+    h = {"analyze": pipeline.analyze, "render": pipeline.render, "metadata": pipeline.metadata}
     try:
         from . import youtube
         h.update(youtube.JOB_HANDLERS)
