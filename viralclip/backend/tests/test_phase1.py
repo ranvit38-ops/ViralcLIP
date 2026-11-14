@@ -111,3 +111,15 @@ def test_login_throttled_after_repeated_failures():
     # even the right password is refused while locked out
     assert c.post("/api/auth/login", json={"email": c.email, "password": "password123"}).status_code == 429
     auth._failures.clear()
+
+
+def test_pre_migration_database_gets_missing_tables(tmp_path, monkeypatch):
+    """A DB made by create_all before Alembic (only some tables) must end up with every table."""
+    import sqlalchemy as sa
+    from app import db as dbmod
+    eng = sa.create_engine(f"sqlite:///{tmp_path / 'old.db'}")
+    dbmod.Base.metadata.tables["users"].create(eng)
+    monkeypatch.setattr(dbmod, "engine", eng)
+    dbmod.init_db()
+    names = set(sa.inspect(eng).get_table_names())
+    assert {"youtube_uploads", "twitch_accounts", "alembic_version"} <= names

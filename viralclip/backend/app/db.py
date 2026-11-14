@@ -50,7 +50,9 @@ def init_db():
         try:
             insp = inspect(engine)
             if insp.has_table("users") and not insp.has_table("alembic_version"):
-                command.stamp(alembic_config(), "head")  # DB created before migrations existed
+                # DB created before migrations existed: add any tables it lacks, then mark it current.
+                Base.metadata.create_all(engine)
+                command.stamp(alembic_config(), "head")
             else:
                 command.upgrade(alembic_config(), "head")
             return
