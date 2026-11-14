@@ -59,6 +59,8 @@ Tokens are Fernet-encrypted at rest and never sent to the browser.
 Uploads use resumable `videos.insert`, with the session URI persisted so a restart resumes instead of duplicating. Scheduling uses `status.privacyStatus=private` and `status.publishAt`.
 Upload state and schedule state are tracked separately.
 
+TikTok (`app/tiktok.py`) mirrors this: Login Kit OAuth, encrypted tokens, one `tiktok_post` job per post (init → chunked upload → status polling via requeue). TikTok has no publish-at, so a scheduled post is a job with `run_after` and only goes out while the worker runs. Unaudited apps are limited to private posts or inbox drafts.
+
 **Hard limits you can't engineer around:**
 - Videos uploaded through an **unaudited** Google Cloud project are locked to *private* until the project passes Google's API compliance audit. Until then, scheduled public publishing won't happen.
 - The default quota is 10,000 units/day, and an upload costs about 1,600 units, so that's roughly **6 uploads/day**. Check the current numbers in Google's docs.

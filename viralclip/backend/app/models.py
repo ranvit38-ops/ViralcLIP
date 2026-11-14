@@ -244,3 +244,59 @@ class AutomationEvent(Base):
     kind: Mapped[str] = mapped_column(String(30))  # import | analyze | approve | render | cleanup | skip | error
     message: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = _created()
+
+
+# ---------- TikTok ----------
+
+class TikTokAccount(Base):
+    __tablename__ = "tiktok_accounts"
+    __table_args__ = (UniqueConstraint("user_id", "open_id"),)
+    id: Mapped[int] = _id()
+    user_id: Mapped[int] = _fk("users.id")
+    open_id: Mapped[str] = mapped_column(String(100))
+    display_name: Mapped[str] = mapped_column(String(200), default="")
+    avatar_url: Mapped[str | None] = mapped_column(Text)
+    encrypted_tokens: Mapped[str] = mapped_column(Text)  # Fernet(JSON{access_token, refresh_token})
+    token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), default="ok")  # ok | reauth_required
+    creator_info: Mapped[dict | None] = mapped_column(JSON)  # last creator_info/query answer (privacy options, max duration)
+    created_at: Mapped[datetime] = _created()
+
+
+class TikTokPost(Base):
+    __tablename__ = "tiktok_posts"
+    id: Mapped[int] = _id()
+    user_id: Mapped[int] = _fk("users.id")
+    clip_id: Mapped[int] = _fk("clips.id")
+    # SET NULL: disconnecting an account keeps the history of past posts.
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("tiktok_accounts.id", ondelete="SET NULL"), index=True)
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    mode: Mapped[str] = mapped_column(String(10), default="draft")  # direct | draft (inbox)
+    privacy_level: Mapped[str | None] = mapped_column(String(30))
+    options: Mapped[dict] = mapped_column(JSON, default=dict)  # disable_comment/duet/stitch, brand toggles
+    # scheduled | queued | uploading | processing | published | draft_sent | failed | cancelled | auth_required
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+    publish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)  # UTC; our worker posts then
+    timezone: Mapped[str | None] = mapped_column(String(64))
+    publish_id: Mapped[str | None] = mapped_column(String(100))
+    quota_day: Mapped[str | None] = mapped_column(String(10), index=True)  # UTC date the post was started at TikTok
+    transient_failures: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TikTokAutoPublishRule(Base):
+    """One rule per TikTok account. Only ever posts clips the user approved and rendered."""
+    __tablename__ = "tiktok_autopublish_rules"
+    id: Mapped[int] = _id()
+    user_id: Mapped[int] = _fk("users.id")
+    account_id: Mapped[int] = mapped_column(ForeignKey("tiktok_accounts.id", ondelete="CASCADE"), unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    time_of_day: Mapped[str] = mapped_column(String(5), default="18:00")
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    clips_per_day: Mapped[int] = mapped_column(Integer, default=1)
+    mode: Mapped[str] = mapped_column(String(10), default="draft")
+    privacy_level: Mapped[str | None] = mapped_column(String(30))
+    created_at: Mapped[datetime] = _created()
