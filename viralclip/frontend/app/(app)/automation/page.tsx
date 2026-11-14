@@ -135,7 +135,7 @@ function Automation() {
 
         <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
           <label className="flex items-center gap-3">
-            <input type="checkbox" checked={s.enabled} onChange={(e) => save({ ...s, enabled: e.target.checked })} disabled={busy} className="size-5 accent-[var(--color-accent)]" />
+            <input type="checkbox" checked={s.enabled} onChange={(e) => { const next = { ...s, enabled: e.target.checked }; setS(next); save(next); }} disabled={busy} className="size-5 accent-[var(--color-accent)]" />
             <span>
               <span className="font-medium">Automation is {st.settings.enabled ? "on" : "off"}</span>
               <span className="block text-xs text-muted">

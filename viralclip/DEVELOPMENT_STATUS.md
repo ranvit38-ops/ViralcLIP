@@ -1,56 +1,47 @@
 # Development status
 
-_Last updated: Phase 1 complete, Phase 2 starting._
+_Last updated: all planned phases are implemented. What's verified and what isn't is listed below._
 
-## Working and tested
+## Working and verified
 
-- **Auth:** register, log in, log out, and `me`. Sessions are server-side, stored in an httpOnly cookie, and passwords are hashed with scrypt.
-- **Projects:** create, list, search (client-side), rename, archive and unarchive, and delete. Deleting removes the files. Projects persist in SQLite.
-- **Resumable chunked upload:** offset-based, so a retried or duplicated chunk is refused with 409 and the client resyncs. Uploads resume after a page reload by re-selecting the same file. Cancelling deletes the project.
-- **Validation:**
-  - Extension allow-list, a 20 GB size limit, and a free-disk check before accepting a file.
-  - ffprobe container check, plus a frame-decode test to catch corrupted files or unsupported codecs.
-  - A missing audio track is flagged.
-- **Metadata:** duration, resolution (rotation-aware), fps, codecs, and audio presence, plus a thumbnail.
-- **Preview:** in-browser playback of the source video with Range support.
-- **Dashboard:** project, clip, awaiting-review, active-job and failed-job counts, all from real database queries.
-- **Per-user isolation:** another user's IDs return 404 on every endpoint.
-- **UI:** works at desktop and phone widths.
+| Area | What works | How it was verified |
+|---|---|---|
+| Accounts | Register and login (scrypt), server-side sessions, failed-login throttle, per-user isolation (404 on other users' IDs) | pytest |
+| Upload | Resumable 8 MB chunks, duplicate-chunk safe, resume after reload, cancel, size/disk/extension/codec/corruption checks | pytest + browser (29 MB 1080p) |
+| Transcription | faster-whisper with word timestamps and real progress; models download on first use; CPU or GPU | Real Whisper tiny and small on synthesized speech |
+| Clip finding | Sentence-bounded windows; transparent score (hook, standalone, completeness, value, pacing, energy) with reasons; no overlapping duplicates; transition and housekeeping lines avoided; loudness-peak fallback for no-speech footage | pytest on a real transcript |
+| AI (optional) | Any OpenAI-compatible LLM re-ranks clips and writes 4 titles, a description and hashtags; filters placeholders, wrong-language output and stray punctuation; falls back to basic suggestions | Real Qwen2.5-3B via llama.cpp, plus pytest with mocks |
+| Rendering | 9:16 / 1:1 / 4:5 / 16:9; **face-tracked crop**; **streamer split screen** (facecam top, gameplay bottom, auto-detected); blurred-background fit; **jump cuts**; **punch-in zoom**; **hook title**; word-highlight captions (4 presets, full style control, editable text); -14 LUFS audio; H.264 CRF 18 | Real renders checked frame by frame (real face image) + pytest |
+| Editing | Trim, aspect, layout, crop position, caption style and text, Shorts effects, title/description/hashtags, regenerate (never overwrites an edited title), approve/reject, delete | 38-check browser end-to-end |
+| Clips library | Filters, search, bulk approve / render / zip download / publish | Browser end-to-end |
+| Jobs | DB-backed worker; real progress; cancel and retry; restart-safe; stale jobs requeued; parallel workers | pytest |
+| YouTube | OAuth with multiple channels; Fernet-encrypted tokens; refresh and revoke; resumable `videos.insert` that resumes the same session after a crash (no duplicates); quota-aware queue (default 6 per channel per day); schedule and bulk schedule (daily, every other day, weekly, custom) with preview; calendar; queue with pause/resume/cancel/retry; auto-publish rules (approved clips only); own-channel link import (yt-dlp, up to 4K) | pytest with Google mocked + browser with Google mocked |
+| Twitch | OAuth with multiple accounts; VOD list; own-VOD import (yt-dlp); dedupe | pytest with Twitch and yt-dlp mocked |
+| Automation | Watches Twitch and YouTube sources every 30 min → import → analyze → opt-in auto-approve (top N, minimum score) → render → auto-publish; one download at a time; skips live streams and back catalog; optional source cleanup; activity log | pytest (chain, idempotency, isolation) + browser (settings, toggle, log) |
+| Settings | Defaults for clip length/count/aspect/layout/captions/effects, metadata preferences, model; system info (disk, models, LLM) | Browser (persistence) |
+| Infrastructure | SQLite or PostgreSQL; Alembic migrations, safe when processes start concurrently; Docker Compose (Ubuntu 24.04 image) | Suite passes on Postgres 16; images built and run end to end |
 
-## Test results
+**Tests:** backend 50 passed (`cd backend && .venv/bin/python -m pytest -q`). Frontend tsc, eslint and build are clean. The browser end-to-end script (`frontend/e2e/clips.e2e.cjs`) passed 38 checks, and a separate whole-product smoke test covered every page at desktop and 390 px with no console errors.
 
-- `backend/tests`: **10 passed** (`cd backend && .venv/bin/python -m pytest -q`).
-- Frontend: `eslint` and `tsc` are clean, and `next build` succeeds.
-- Manual end-to-end in headless Chromium: register, upload a 29 MB 1080p file in 8 MB chunks through the Next proxy, then the metadata appears correctly.
+## Not verified (impossible without your real accounts)
 
-## Not implemented yet
+- **Real Google sign-in and real YouTube uploads.** All tests use a mocked Google. Before trusting it, connect a channel and upload one private test clip; follow `docs/YOUTUBE_SETUP.md`.
+- **Real Twitch sign-in and real VOD downloads.** Mocked too. Follow `docs/TWITCH_SETUP.md`.
+- **yt-dlp against live YouTube and Twitch.** It works today, but it breaks whenever those sites change. Update it with `pip install -U yt-dlp`.
 
-| Phase | Item |
-|---|---|
-| 2 | Worker process, audio extraction, faster-whisper transcription, transcript viewer, clip candidate selection and scoring, review UI |
-| 3 | ffmpeg rendering, 9:16/1:1/4:5/16:9, face-tracked reframe, burned captions, downloads |
-| 4 | Editor (trim, crop, caption styles), AI titles, descriptions and hashtags |
-| 5–7 | YouTube OAuth, uploads, quota-aware queue, scheduling, calendar, bulk scheduling, auto-publish rules |
-| 8 | Alembic migrations, Docker Compose, Postgres verification, storage cleanup, settings page |
-| new | Watch-folder auto-import (for OBS recordings) |
+## Known limits
 
-The sidebar only shows sections that work. Clips, YouTube, Calendar, Queue and Settings will appear as they're built.
+- **Unaudited Google Cloud projects can only upload private videos.** Public or scheduled publishing needs Google's audit. Default quota is about 6 uploads a day per Cloud project, not per channel.
+- **Face detection uses OpenCV's Haar cascade.** It's fast and needs no download, but it misses profile and turned faces. Speaker detection is "largest face"; there is no diarization.
+- **Small local LLMs (3B) invent details.** Use 7B+ for titles you'd publish unreviewed.
+- **No emoji in captions.** libass can't render color emoji.
+- **No background music or B-roll.** Copyright and licensing make these a liability.
+- **No light theme.**
+- **Single API process.** The upload offset lock and login throttle are in-memory. Workers scale freely.
+- **Loading audio for transcription takes ~0.5 GB of RAM per hour of source.**
 
-## Known gaps and bugs
+## Next tasks, if needed
 
-- There are no schema migrations yet (`create_all`). Add Alembic before anyone has data worth keeping.
-- The upload offset check is atomic per process. Run the API with **one** worker process until a file lock is added.
-- Duplicate *files* (the same video uploaded twice as two projects) are not detected.
-- There's no light theme yet.
-
-## Required external configuration
-
-- `ffmpeg`/`ffprobe` on PATH.
-- Phase 2+: network access to huggingface.co for Whisper models on first run. An optional OpenAI-compatible LLM endpoint (e.g. Ollama).
-- Phase 5+: a Google Cloud project with YouTube Data API v3 and an OAuth web client (setup docs will come with that phase).
-
-## Next tasks
-
-1. Build the worker and the analyze job (faster-whisper with word timestamps).
-2. Candidate selection: speech-based for videos with commentary, and loudness/scene-based for gameplay with no speech.
-3. A transparent scoring breakdown, then the clip review UI.
+1. Run the real YouTube and Twitch connection tests above.
+2. A better face model (YuNet) if framing misses faces on your footage.
+3. Scene-cut and chat-activity signals for gameplay highlight detection. Loudness only is the current ceiling.
