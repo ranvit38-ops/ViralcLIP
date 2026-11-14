@@ -93,7 +93,7 @@ def basic_metadata(text: str, prefs: dict) -> dict:
     titles = [t[:95].rstrip(" ,.") for t in titles if len(t) > 12][:4] or [text[:80]]
     n = int(prefs.get("hashtag_count") or 5)
     tags = _keywords(text, max(1, n - 1)) + ["shorts"]
-    desc_len = prefs.get("description_length", "short")
+    desc_len = prefs.get("description_length") or "short"
     desc = " ".join(sents[: 2 if desc_len == "short" else 4])
     return {"titles": titles, "description": desc, "hashtags": tags[:n], "method": "basic"}
 
@@ -107,10 +107,10 @@ def generate_metadata(text: str, prefs: dict) -> dict:
         "You write YouTube Shorts metadata for a clip, using ONLY what the transcript says. "
         "Never invent facts, numbers or claims. No clickbait that misrepresents the content, no ALL CAPS titles, "
         "at most one ! or ? per title, titles under 70 characters. "
-        f"Title style preference: {prefs.get('title_style', 'mixed: curiosity, educational, question, direct')}. "
-        f"Tone: {prefs.get('tone', 'natural')}. Audience: {prefs.get('audience', 'general')}. "
-        f"Category: {prefs.get('category', 'auto-detect')}. Language: {prefs.get('language', 'same as transcript')}. "
-        f"Description: {'1-2' if prefs.get('description_length', 'short') == 'short' else '3-5'} sentences, natural keywords, no hashtags. "
+        f"Title style preference: {prefs.get('title_style') or 'mixed: curiosity, educational, question, direct'}. "
+        f"Tone: {prefs.get('tone') or 'natural'}. Audience: {prefs.get('audience') or 'general'}. "
+        f"Category: {prefs.get('category') or 'auto-detect'}. Language: {prefs.get('language') or 'same as transcript'}. "
+        f"Description: {'1-2' if (prefs.get('description_length') or 'short') == 'short' else '3-5'} sentences, natural keywords, no hashtags. "
         f"Hashtags: exactly {n}, specific to the subject, no generic spam, no '#' prefix. "
         'Give exactly 4 titles in different styles. '
         'Reply JSON: {"titles":["<title 1>","<title 2>","<title 3>","<title 4>"],"description":"...","hashtags":["<tag>", ...]}')

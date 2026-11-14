@@ -1,11 +1,13 @@
 "use client";
 
-import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Clapperboard, Pencil, Trash2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import { api, fmtBytes, fmtDate, fmtDuration, type Project } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ACTIVE_JOB, api, fmtBytes, fmtDate, fmtDuration, type Clip, type Project } from "@/lib/api";
 import { useUpload } from "@/lib/upload";
-import { Button, Card, ErrorNote, Input, PageHeader, Progress, StatusBadge } from "@/components/ui";
+import { BulkBar, ClipReviewRow, RENDER_ACTIVE } from "@/components/clips";
+import { GeneratePanel, JobsList, TranscriptPanel, type Transcript } from "@/components/project-panels";
+import { Button, Card, Empty, ErrorNote, Input, PageHeader, Progress, Section, StatusBadge } from "@/components/ui";
 
 function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -40,18 +42,35 @@ function ResumeUpload({ p, onDone }: { p: Project; onDone: () => void }) {
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const video = useRef<HTMLVideoElement>(null);
   const [p, setP] = useState<Project | null>(null);
+  const [clips, setClips] = useState<Clip[]>([]);
+  const [transcript, setTranscript] = useState<Transcript | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [showRejected, setShowRejected] = useState(false);
   const [missing, setMissing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
 
-  const load = useCallback(() => api<Project>(`/api/projects/${id}`).then(setP).catch((e) => e.status === 404 && setMissing(true)), [id]);
+  const load = useCallback(() => Promise.all([
+    api<Project>(`/api/projects/${id}`),
+    api<Clip[]>(`/api/clips?project_id=${id}`),
+  ]).then(([proj, cl]) => { setP(proj); setClips(cl); })
+    .catch((e) => { if (e.status === 404) setMissing(true); }), [id]);
   useEffect(() => { load(); }, [load]);
-  const active = p?.jobs?.some((j) => ["queued", "running", "cancel_requested"].includes(j.status));
+
+  // Load the transcript once an analyze job has finished (a failed one may still have transcribed).
+  const analyzeKey = p?.jobs?.filter((j) => j.job_type === "analyze" && ["done", "failed"].includes(j.status)).map((j) => `${j.id}${j.status}`).join(",") ?? "";
+  useEffect(() => {
+    if (!analyzeKey) return;
+    api<Transcript>(`/api/projects/${id}/transcript`).then(setTranscript).catch(() => setTranscript(null));
+  }, [id, analyzeKey]);
+
+  const active = !!p?.jobs?.some((j) => ACTIVE_JOB.includes(j.status)) || clips.some((c) => RENDER_ACTIVE.includes(c.render_status));
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(load, 3000);
+    const t = setInterval(load, 2000);
     return () => clearInterval(t);
   }, [active, load]);
 
@@ -68,12 +87,24 @@ export default function ProjectPage() {
     await api(`/api/projects/${p!.id}`, { method: "DELETE" });
     router.push("/projects");
   }
+  function seek(t: number) {
+    if (!video.current) return;
+    video.current.currentTime = t;
+    video.current.play().catch(() => {});
+    video.current.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  const shown = clips.filter((c) => showRejected || c.review_status !== "rejected");
+  const ids = shown.filter((c) => selected.has(c.id)).map((c) => c.id);
+  const rejected = clips.length - clips.filter((c) => c.review_status !== "rejected").length;
+  const analyzing = p.jobs?.some((j) => j.job_type === "analyze" && ACTIVE_JOB.includes(j.status));
+  const playable = p.status !== "uploading" && p.status !== "failed";
 
   return (
     <>
       <PageHeader
         title={p.name}
-        sub={<span className="inline-flex items-center gap-2"><StatusBadge status={p.status} /> {p.archived && <StatusBadge status="archived" />} Created {fmtDate(p.created_at)}</span>}
+        sub={<span className="inline-flex flex-wrap items-center gap-2"><StatusBadge status={p.status} /> {p.archived && <StatusBadge status="archived" />} Created {fmtDate(p.created_at)}</span>}
         actions={<>
           <Button variant="ghost" onClick={() => { setName(p.name); setEditing(true); }}><Pencil size={16} /> Rename</Button>
           <Button variant="ghost" onClick={() => patch({ archived: !p.archived })}>
@@ -90,11 +121,11 @@ export default function ProjectPage() {
         </form>
       )}
       <div className="space-y-4">
-        <ErrorNote>{error || p.error}</ErrorNote>
+        <ErrorNote>{error || (p.has_audio === false ? null : p.error)}</ErrorNote>
         {p.status === "uploading" && <ResumeUpload p={p} onDone={load} />}
-        {p.status !== "uploading" && p.status !== "failed" && (
+        {playable && (
           <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-            <video src={`/api/projects/${p.id}/source`} poster={p.thumbnail_url ?? undefined} controls preload="metadata" className="aspect-video w-full rounded-lg border border-line bg-black" />
+            <video ref={video} src={`/api/projects/${p.id}/source`} poster={p.thumbnail_url ?? undefined} controls preload="metadata" className="aspect-video w-full rounded-lg border border-line bg-black" />
             <Card className="p-4">
               <dl className="grid grid-cols-2 gap-4">
                 <Meta label="Duration" value={fmtDuration(p.duration)} />
@@ -108,6 +139,52 @@ export default function ProjectPage() {
             </Card>
           </div>
         )}
+
+        {(p.status === "uploaded" || p.status === "ready") && !analyzing && (
+          <GeneratePanel project={p} hasTranscript={!!transcript} onStarted={load} />
+        )}
+        <JobsList jobs={p.jobs ?? []} onChange={load} />
+
+        {playable && (
+          <Section
+            title={`Clips${clips.length ? ` (${shown.length})` : ""}`}
+            actions={rejected > 0 && (
+              <label className="flex items-center gap-2 text-xs text-muted">
+                <input type="checkbox" checked={showRejected} onChange={(e) => setShowRejected(e.target.checked)} className="accent-[var(--color-accent)]" />
+                Show {rejected} rejected
+              </label>
+            )}
+          >
+            {shown.length === 0 ? (
+              <Empty icon={<Clapperboard size={22} />} title={analyzing ? "Finding clips…" : "No clips yet"}>
+                {analyzing ? "Clips appear here when the job above finishes." : "Use Generate clips above to find the best moments."}
+              </Empty>
+            ) : (
+              <>
+                <BulkBar
+                  ids={ids}
+                  all={ids.length === shown.length}
+                  onSelectAll={(v) => setSelected(v ? new Set(shown.map((c) => c.id)) : new Set())}
+                  onDone={load}
+                  projectId={p.id}
+                />
+                <div className="-mx-4 mt-3 divide-y divide-line border-t border-line">
+                  {shown.map((c) => (
+                    <ClipReviewRow
+                      key={c.id}
+                      clip={c}
+                      selected={selected.has(c.id)}
+                      onSelect={(v) => setSelected((s) => { const n = new Set(s); if (v) n.add(c.id); else n.delete(c.id); return n; })}
+                      onChange={load}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </Section>
+        )}
+
+        {transcript && <TranscriptPanel transcript={transcript} onSeek={seek} />}
       </div>
     </>
   );

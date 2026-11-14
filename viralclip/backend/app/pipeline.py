@@ -293,7 +293,10 @@ def _ass_escape(s: str) -> str:
 
 
 def clip_words(segments: list[dict], start: float, end: float) -> list[dict]:
-    return [{"start": w["start"] - start, "end": w["end"] - start, "word": w["word"].strip()}
+    """Words overlapping [start, end), timed relative to the clip and clamped inside it
+    (a trim can land mid-word; negative times would break caption editing)."""
+    return [{"start": round(max(0.0, w["start"] - start), 2), "end": round(min(end - start, w["end"] - start), 2),
+             "word": w["word"].strip()}
             for s in segments for w in s.get("words") or [] if w["end"] > start and w["start"] < end and w["word"].strip()]
 
 

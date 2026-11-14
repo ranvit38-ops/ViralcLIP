@@ -1,6 +1,6 @@
 "use client";
 
-import { Film, LayoutDashboard, LogOut, Menu, Plus, X } from "lucide-react";
+import { Clapperboard, Film, LayoutDashboard, LogOut, Menu, Plus, Settings, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -11,6 +11,8 @@ const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects/new", label: "Create Project", icon: Plus },
   { href: "/projects", label: "My Videos", icon: Film },
+  { href: "/clips", label: "Generated Clips", icon: Clapperboard },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -21,7 +23,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => { api("/api/auth/me").then(setMe).catch(() => {}); }, []);
 
   const active = (href: string) =>
-    href === "/projects" ? path.startsWith("/projects") && path !== "/projects/new" : path === href;
+    href === "/projects" ? path.startsWith("/projects") && path !== "/projects/new"
+      : href === "/" || href === "/projects/new" ? path === href : path === href || path.startsWith(href + "/");
 
   if (!me) return <div className="grid min-h-dvh place-items-center text-sm text-muted">Loading…</div>;
 

@@ -11,13 +11,14 @@ type Dash = {
   recent_jobs: Job[]; recent_projects: Project[];
 };
 
-function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
-  return (
-    <Card className="p-4">
+function Stat({ label, value, icon, href }: { label: string; value: number; icon: React.ReactNode; href?: string }) {
+  const card = (
+    <Card className={`h-full p-4 ${href ? "transition hover:border-zinc-600" : ""}`}>
       <div className="flex items-center justify-between text-xs text-muted">{label}{icon}</div>
       <p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p>
     </Card>
   );
+  return href ? <Link href={href}>{card}</Link> : card;
 }
 
 export default function Dashboard() {
@@ -34,9 +35,9 @@ export default function Dashboard() {
     <>
       <PageHeader title="Dashboard" actions={<LinkButton href="/projects/new" variant="primary"><Plus size={16} /> New project</LinkButton>} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat label="Projects" value={d.projects} icon={<Film size={14} />} />
-        <Stat label="Clips generated" value={d.clips} icon={<Clapperboard size={14} />} />
-        <Stat label="Awaiting review" value={d.clips_awaiting_review} icon={<Inbox size={14} />} />
+        <Stat label="Projects" value={d.projects} icon={<Film size={14} />} href="/projects" />
+        <Stat label="Clips generated" value={d.clips} icon={<Clapperboard size={14} />} href="/clips" />
+        <Stat label="Awaiting review" value={d.clips_awaiting_review} icon={<Inbox size={14} />} href="/clips?review_status=suggested" />
         <Stat label="Processing jobs" value={d.active_jobs} icon={<Loader2 size={14} />} />
         <Stat label="Failed jobs" value={d.failed_jobs} icon={<AlertTriangle size={14} />} />
       </div>

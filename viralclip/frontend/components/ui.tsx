@@ -47,8 +47,29 @@ const TONES: Record<string, string> = {
 const STATUS_TONE: Record<string, keyof typeof TONES> = {
   uploaded: "blue", ready: "green", done: "green", approved: "green", published: "green", scheduled: "blue",
   uploading: "amber", processing: "amber", queued: "amber", running: "amber", rendering: "amber", cancel_requested: "amber",
-  failed: "red", rejected: "red", cancelled: "gray", suggested: "gray", none: "gray",
+  failed: "red", rejected: "red", cancelled: "gray", suggested: "gray", none: "gray", outdated: "amber",
 };
+
+export function Select({ className, ...p }: ComponentProps<"select">) {
+  return <select className={cx("h-9 w-full rounded-md border border-line bg-bg px-2 text-sm outline-none focus:border-accent", className)} {...p} />;
+}
+
+export function Textarea({ className, ...p }: ComponentProps<"textarea">) {
+  return <textarea className={cx("w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent placeholder:text-muted/60", className)} {...p} />;
+}
+
+/** Card section with a heading row. */
+export function Section({ title, actions, children, className }: { title: string; actions?: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <Card className={cx("p-4", className)}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      </div>
+      {children}
+    </Card>
+  );
+}
 
 export function Badge({ children, tone = "gray" }: { children: ReactNode; tone?: keyof typeof TONES }) {
   return <span className={cx("inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset", TONES[tone])}>{children}</span>;
