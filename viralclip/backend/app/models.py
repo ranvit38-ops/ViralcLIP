@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -53,8 +53,8 @@ class Project(Base):
 
     # upload (resumable, offset-based)
     source_filename: Mapped[str | None] = mapped_column(String(255))
-    upload_size: Mapped[int | None] = mapped_column(Integer)
-    bytes_received: Mapped[int] = mapped_column(Integer, default=0)
+    upload_size: Mapped[int | None] = mapped_column(BigInteger)
+    bytes_received: Mapped[int] = mapped_column(BigInteger, default=0)
 
     # media metadata from ffprobe
     duration: Mapped[float | None] = mapped_column(Float)

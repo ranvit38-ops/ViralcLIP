@@ -1,0 +1,34 @@
+# docker compose up --build   ->  http://localhost:3000
+# Optional local LLM:  docker compose --profile llm up --build   (then: docker compose exec ollama ollama pull qwen2.5:7b-instruct)
+x-backend: &backend
+  build: ./backend
+  env_file: { path: .env, required: false }
+  environment:
+    VC_DATA_DIR: /data
+    DATABASE_URL: ${DATABASE_URL:-sqlite:////data/viralclip.db}
+  volumes:
+    - data:/data
+    - models:/models
+  restart: unless-stopped
+
+services:
+  api:
+    <<: *backend
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.worker"]
+  web:
+    build: ./frontend
+    ports: ["3000:3000"]
+    depends_on: [api]
+    restart: unless-stopped
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    volumes: [ollama:/root/.ollama]
+    restart: unless-stopped
+
+volumes:
+  data:
+  models:
+  ollama:
