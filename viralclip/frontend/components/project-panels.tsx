@@ -103,6 +103,16 @@ export function GeneratePanel({ project, hasTranscript, onStarted }: { project: 
               </Select>
             </Field>
           </div>
+          {project.duration != null && project.duration < min * 3 && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              This video is only {Math.round(project.duration)} s long, so {min}–{max} s clips leave room for just one or two.
+              {min > 15 && (
+                <button type="button" className="font-medium text-amber-100 underline" onClick={() => { setPreset("15–30 s"); setMin(15); setMax(30); }}>
+                  Use 15–30 s clips
+                </button>
+              )}
+            </p>
+          )}
           {hasTranscript && (
             <label className="flex items-center gap-2 text-sm text-muted">
               <input type="checkbox" checked={retranscribe} onChange={(e) => setRetranscribe(e.target.checked)} className="size-4 accent-[var(--color-accent)]" />

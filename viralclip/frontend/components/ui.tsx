@@ -140,7 +140,7 @@ export function SaveBar({ dirty, saving, onSave, onDiscard, label = "Save change
     ) : null;
   }
   return (
-    <div className="sticky bottom-3 z-20 rounded-lg border border-accent/40 bg-panel-2/95 p-3 shadow-2xl shadow-black/60 backdrop-blur">
+    <div className="sticky bottom-3 z-20 mt-4 rounded-lg border border-accent/40 bg-panel-2 p-3 shadow-[0_-8px_24px_rgba(0,0,0,0.6)] ring-8 ring-bg">
       <div className="flex flex-wrap items-center gap-3">
         <span className="mr-auto text-sm"><span className="mr-2 inline-block size-2 rounded-full bg-accent align-middle" />Unsaved changes</span>
         <Button variant="ghost" onClick={onDiscard} disabled={saving}>Discard</Button>

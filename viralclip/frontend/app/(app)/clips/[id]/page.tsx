@@ -38,7 +38,10 @@ function FramePreview({ project, rs, sample }: { project: Project; rs: Draft["rs
   const [W, H] = ASPECTS[rs.aspect] ?? ASPECTS["9:16"];
   const sw = project.width ?? 16, sh = project.height ?? 9;
   const dst = W / H, src = sw / sh;
-  const wfrac = src > dst ? (sh * dst) / sw : 1;
+  // Streamer split: renderer only uses it for tall outputs; gameplay fills the bottom 60%.
+  const stream = rs.layout === "stream" && dst < 1;
+  const panelAr = stream ? W / (H * 0.6) : dst;
+  const wfrac = src > panelAr ? (sh * panelAr) / sw : 1;
   const left = rs.crop_x == null ? (1 - wfrac) / 2 : Math.max(0, Math.min(1 - wfrac, rs.crop_x - wfrac / 2));
   const st = rs.style;
   const previewW = 220;
@@ -63,7 +66,8 @@ function FramePreview({ project, rs, sample }: { project: Project; rs: Draft["rs
           )}
         </div>
         <p className="mt-1.5 max-w-64 text-[11px] text-muted">
-          {rs.layout === "stream" ? "Facecam (found at render time) on top; the gameplay area shown here goes below." :
+          {rs.layout === "stream" ? (stream ? "Your facecam is found at render time and goes on top; the boxed gameplay area goes below." :
+            "Split screen needs a tall format (9:16 or 4:5); this aspect renders the whole frame instead.") :
             rs.layout === "fit" ? "Whole frame is shown, centered on a blurred copy." :
             rs.crop_x == null ? (rs.layout === "auto" ? "Face tracking picks the framing at render time (dashed = starting guess)." : "Face tracking picks the position at render time.") :
               "Fixed crop position."}
@@ -72,7 +76,17 @@ function FramePreview({ project, rs, sample }: { project: Project; rs: Draft["rs
       <div>
         <p className="mb-1.5 text-xs text-muted">Output {rs.aspect} · captions preview</p>
         <div className="relative overflow-hidden rounded-md bg-black" style={{ width: previewW, aspectRatio: `${W}/${H}` }}>
-          {project.thumbnail_url && (rs.layout === "fit" ? (
+          {project.thumbnail_url && (stream ? (
+            <div className="absolute inset-0 flex flex-col">
+              <div className="grid h-[40%] place-items-center border-b-2 border-black bg-panel-2 text-center text-[10px] leading-tight text-muted">
+                <span className="px-2">Facecam<br />(detected at render)</span>
+              </div>
+              <div className="relative flex-1 overflow-hidden">
+                <img src={project.thumbnail_url} alt="" className="absolute inset-0 size-full object-cover"
+                  style={{ objectPosition: `${wfrac < 1 ? (left / (1 - wfrac)) * 100 : 50}% 50%` }} />
+              </div>
+            </div>
+          ) : rs.layout === "fit" ? (
             <>
               <img src={project.thumbnail_url} alt="" className="absolute inset-0 size-full scale-110 object-cover blur-md brightness-75" />
               <img src={project.thumbnail_url} alt="" className="absolute inset-0 size-full object-contain" />
@@ -82,7 +96,7 @@ function FramePreview({ project, rs, sample }: { project: Project; rs: Draft["rs
               style={{ objectPosition: `${wfrac < 1 ? (left / (1 - wfrac)) * 100 : 50}% 50%` }} />
           ))}
           {rs.captions && (
-            <div className="absolute inset-x-2 -translate-y-1/2 text-center leading-tight" style={{ top: POSITION_TOP[rs.position] ?? "76%" }}>
+            <div className="absolute inset-x-2 -translate-y-1/2 text-center leading-tight" style={{ top: stream && rs.position === "lower" ? "40%" : POSITION_TOP[rs.position] ?? "76%" }}>
               <span
                 style={{
                   fontFamily: `"${st.font}", system-ui, sans-serif`, fontSize: st.size * scale, fontWeight: st.bold ? 800 : 500,
@@ -168,6 +182,8 @@ export default function ClipEditor() {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [publishing, setPublishing] = useState(false);
+  const [ytReady, setYtReady] = useState<boolean | null>(null);
+  useEffect(() => { api<{ configured: boolean }>("/api/youtube/config").then((c) => setYtReady(c.configured)).catch(() => setYtReady(false)); }, []);
 
   const loadCaptions = useCallback(async () => {
     const c = await api<{ edited: boolean; lines: CaptionLine[] }>(`/api/clips/${id}/captions`);
@@ -288,9 +304,13 @@ export default function ClipEditor() {
           {clip.review_status !== "approved" && <Button onClick={() => review("approved")} disabled={!!busy}><Check size={15} /> Approve</Button>}
           {clip.review_status !== "rejected" && <Button variant="ghost" onClick={() => review("rejected")} disabled={!!busy}><X size={15} /> Reject</Button>}
           {clip.review_status !== "suggested" && <Button variant="ghost" onClick={() => review("suggested")} disabled={!!busy}><RotateCcw size={15} /> Undo review</Button>}
-          {clip.review_status === "approved" && clip.render_status === "done" && (
+          {clip.review_status === "approved" && clip.render_status === "done" && ytReady !== null && (ytReady ? (
             <Button variant="primary" onClick={() => setPublishing(true)} disabled={!!busy}><CalendarClock size={15} /> Publish to YouTube</Button>
-          )}
+          ) : (
+            <Link href="/youtube" className="inline-flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm text-muted hover:text-fg">
+              <CalendarClock size={15} /> YouTube setup needed
+            </Link>
+          ))}
           <Button variant="danger" onClick={del} disabled={!!busy}><Trash2 size={15} /> Delete</Button>
         </div>
       </div>
