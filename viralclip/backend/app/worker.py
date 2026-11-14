@@ -52,6 +52,8 @@ def handlers():
         h.update(youtube.JOB_HANDLERS)
     except ImportError:
         pass
+    from . import twitch
+    h.update(twitch.JOB_HANDLERS)
     return h
 
 
@@ -115,6 +117,11 @@ def periodic():
         youtube.tick()
     except Exception:
         log.exception("periodic task failed")
+    try:
+        from . import automation
+        automation.tick()  # import → analyze → approve → render; youtube.tick() then publishes
+    except Exception:
+        log.exception("automation tick failed")
 
 
 def run_once() -> bool:
