@@ -200,3 +200,47 @@ class AutoPublishRule(Base):
     clips_per_day: Mapped[int] = mapped_column(Integer, default=1)
     project_ids: Mapped[list] = mapped_column(JSON, default=list)  # empty = any project
     created_at: Mapped[datetime] = _created()
+
+
+# ---------- Twitch + automation ----------
+
+class TwitchAccount(Base):
+    __tablename__ = "twitch_accounts"
+    __table_args__ = (UniqueConstraint("user_id", "twitch_user_id"),)
+    id: Mapped[int] = _id()
+    user_id: Mapped[int] = _fk("users.id")
+    twitch_user_id: Mapped[str] = mapped_column(String(32))
+    login: Mapped[str] = mapped_column(String(64), default="")
+    display_name: Mapped[str] = mapped_column(String(100), default="")
+    profile_image_url: Mapped[str | None] = mapped_column(String(500))
+    encrypted_tokens: Mapped[str] = mapped_column(Text)  # Fernet(JSON{access_token, refresh_token})
+    token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), default="ok")  # ok | reauth_required
+    created_at: Mapped[datetime] = _created()
+
+
+class SourceVideo(Base):
+    """A long-form video (Twitch VOD or YouTube upload) that was imported. Never imported twice per user.
+    The row outlives its project, so automation won't re-import something the user deleted."""
+    __tablename__ = "source_videos"
+    __table_args__ = (UniqueConstraint("user_id", "platform", "external_id"),)
+    id: Mapped[int] = _id()
+    user_id: Mapped[int] = _fk("users.id")
+    platform: Mapped[str] = mapped_column(String(10))  # twitch | youtube
+    external_id: Mapped[str] = mapped_column(String(64))
+    account_id: Mapped[int | None] = mapped_column(Integer)  # twitch_accounts.id or youtube_accounts.id
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), index=True)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    automated: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = _created()
+
+
+class AutomationEvent(Base):
+    """Activity log: what automation did and when."""
+    __tablename__ = "automation_events"
+    id: Mapped[int] = _id()
+    user_id: Mapped[int] = _fk("users.id")
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(30))  # import | analyze | approve | render | cleanup | skip | error
+    message: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = _created()

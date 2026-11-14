@@ -824,6 +824,12 @@ def import_link(body: ImportRequest, user: User = Depends(current_user), db: Ses
     vid = parse_video_id(body.url)
     if not vid:
         raise HTTPException(422, "That doesn't look like a YouTube video link.")
+    return projects.project_out(create_import(db, user, vid), db)
+
+
+def create_import(db: Session, user: User, vid: str, automated: bool = False) -> Project:
+    """Verify the video is on one of the user's connected channels, then queue its download."""
+    from .automation import start_import
     accounts = list(db.scalars(select(YouTubeAccount).where(YouTubeAccount.user_id == user.id, YouTubeAccount.status == "ok")))
     if not accounts:
         raise HTTPException(409, "Connect the YouTube channel that owns this video first.")
@@ -844,15 +850,9 @@ def import_link(body: ImportRequest, user: User = Depends(current_user), db: Ses
     if item["snippet"]["channelId"] not in mine:
         raise HTTPException(403, f"This video belongs to \"{item['snippet'].get('channelTitle', 'another channel')}\", which isn't one "
                                  "of your connected channels. Link import only works for your own videos; connect that channel first.")
-    if shutil.disk_usage(config.DATA_DIR).free < config.MIN_FREE_BYTES * 2:
-        raise HTTPException(507, "Not enough free disk space to import a video.")
-    p = Project(user_id=user.id, name=item["snippet"].get("title", vid)[:200] or vid, status="importing",
-                source_filename=f"{vid}.mp4")
-    db.add(p)
-    db.flush()
-    db.add(Job(project_id=p.id, job_type="youtube_import", params={"video_id": vid}))
-    db.commit()
-    return projects.project_out(p, db)
+    acc_id = next((a.id for a in accounts if a.channel_id == item["snippet"]["channelId"]), None)
+    return start_import(db, user.id, "youtube", vid, acc_id, item["snippet"].get("title", vid),
+                        "youtube_import", {"video_id": vid}, est_bytes=0, automated=automated)
 
 
 def run_import(job_id: int, ctx) -> None:
@@ -862,6 +862,8 @@ def run_import(job_id: int, ctx) -> None:
         job = db.get(Job, job_id)
         p = db.get(Project, job.project_id)
         vid, pid = job.params["video_id"], p.id
+        url = job.params.get("url") or f"https://www.youtube.com/watch?v={vid}"
+        source = job.params.get("source", "YouTube")
         p.status, p.error = "importing", None
         db.commit()
     out_dir = projects.project_dir(pid)
@@ -893,15 +895,16 @@ def run_import(job_id: int, ctx) -> None:
         opts["ffmpeg_location"] = config.FFMPEG
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.download([f"https://www.youtube.com/watch?v={vid}"])
+            ydl.download([url])
     except Exception as e:  # yt_dlp.utils.DownloadError and friends
         if state["cancelled"] or isinstance(e, Cancelled):
             _fail_import(pid, "Import cancelled.")
             raise Cancelled()
-        _fail_import(pid, "Couldn't download the video from YouTube. yt-dlp may need updating "
-                          "(pip install -U yt-dlp), or YouTube is blocking this server.")
-        log.warning("yt-dlp failed for %s: %s", vid, str(e)[:300])
-        raise UserError("Download from YouTube failed. Try `pip install -U yt-dlp`, or download the file in YouTube Studio and upload it.")
+        _fail_import(pid, f"Couldn't download the video from {source}. yt-dlp may need updating "
+                          f"(pip install -U yt-dlp), or {source} is blocking this server.")
+        log.warning("yt-dlp failed for %s: %s", url, str(e)[:300])
+        raise UserError(f"Download from {source} failed. Try `pip install -U yt-dlp`, or download the file "
+                        "yourself and upload it.")
     downloaded = out_dir / "download.mp4"
     if not downloaded.exists():
         _fail_import(pid, "The download finished but produced no MP4 file.")
