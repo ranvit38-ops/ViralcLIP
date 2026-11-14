@@ -31,42 +31,39 @@ No subscriptions, credits or watermarks. Everything runs on your machine.
    - Only your own connected channels can be imported. See `docs/TWITCH_SETUP.md`.
 6. **Publish**: connect one or more YouTube channels. Then upload now, schedule, bulk-schedule (daily, every other day, weekly), or turn on an auto-publish rule. Rules only ever take clips you approved.
 
-## Quick start (Docker)
+## Quick start (no Docker)
+
+**1. Install the three tools once**, then close and reopen your terminal:
+- Windows (PowerShell): `winget install Python.Python.3.12 OpenJS.NodeJS.LTS Gyan.FFmpeg`
+- macOS: `brew install python@3.12 node ffmpeg`
+- Linux: `sudo apt install python3 python3-venv ffmpeg`, plus Node 20+ from nodejs.org
+
+**2. Start it:**
+- Windows: double-click `start.bat`
+- macOS/Linux: `./start.sh`
+- Any system: `python run.py`
+
+The first run sets everything up (5–15 min). Later runs start in seconds. Your browser opens at http://localhost:3000.
+Keep the window open: automation (Twitch/YouTube watching, auto-publish) only runs while it's open. Ctrl+C stops everything.
+
+Your keys go in `viralclip/.env`, which the first run creates from `.env.example`. Restart after editing it.
+Data and logs are in `backend/data/`.
+
+Options:
+- `python run.py --port 3001` to use a different port
+- `--workers 3` for more parallel renders
+- `--rebuild` after pulling new code if something looks stale
+
+## Alternative: Docker
 
 ```bash
-cp .env.example .env        # optional: fill in Google OAuth for YouTube, an LLM endpoint
+cp .env.example .env
 docker compose up --build   # http://localhost:3000
 ```
 
-The first clip generation downloads the Whisper model (~500 MB for `small`) into the `models` volume.
+Optional local LLM in Docker: `docker compose --profile llm up -d --build`, then `docker compose exec ollama ollama pull qwen2.5:7b-instruct`, and set `LLM_BASE_URL=http://ollama:11434/v1` and `LLM_MODEL=qwen2.5:7b-instruct` in `.env`.
 
-To add a local LLM for better titles:
-
-```bash
-docker compose --profile llm up -d --build
-docker compose exec ollama ollama pull qwen2.5:7b-instruct
-# in .env:
-#   LLM_BASE_URL=http://ollama:11434/v1
-#   LLM_MODEL=qwen2.5:7b-instruct
-```
-
-Then `docker compose up -d` again.
-
-## Quick start (without Docker)
-
-Needs Python 3.11+, Node 20+, and ffmpeg 6+ on PATH. Set the environment variables first, e.g. `set -a; . ../.env; set +a`.
-
-```bash
-cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn app.main:app --port 8000          # API: keep it to ONE process
-.venv/bin/python -m app.worker                       # in a 2nd terminal; start more for parallel jobs
-```
-
-```bash
-cd frontend && npm install && npm run build && npx next start -p 3000
-```
-
-PostgreSQL works too: `DATABASE_URL=postgresql+psycopg://user:pass@host/db`. The test suite passes on SQLite and Postgres 16.
+Without Docker, install Ollama from ollama.com, run `ollama pull qwen2.5:7b-instruct`, and set `LLM_BASE_URL=http://localhost:11434/v1` and `LLM_MODEL=qwen2.5:7b-instruct` in `.env`.
 
 ## AI models and hardware
 
