@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, fmtDate, type Job, type Project } from "@/lib/api";
 import { Card, Empty, LinkButton, PageHeader, Progress, StatusBadge } from "@/components/ui";
+import { YouTubeStats } from "@/components/youtube-stats";
 
 type Dash = {
   projects: number; clips: number; clips_awaiting_review: number; active_jobs: number; failed_jobs: number;
@@ -40,7 +41,7 @@ export default function Dashboard() {
         <Stat label="Processing jobs" value={d.active_jobs} icon={<Loader2 size={14} />} />
         <Stat label="Failed jobs" value={d.failed_jobs} icon={<AlertTriangle size={14} />} />
       </div>
-      <p className="mt-3 text-xs text-muted">YouTube upload and scheduling stats appear here once the YouTube integration is connected (not built yet).</p>
+      <YouTubeStats />
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <section>

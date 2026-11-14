@@ -108,6 +108,15 @@ def run_job(jid: int, table=None):
         db.commit()
 
 
+def periodic():
+    """Once a minute: YouTube auto-publish rules and scheduled-video status sync."""
+    try:
+        from . import youtube
+        youtube.tick()
+    except Exception:
+        log.exception("periodic task failed")
+
+
 def run_once() -> bool:
     jid = claim()
     if jid is None:
@@ -124,6 +133,7 @@ def main():
     while True:
         if time.time() - last_sweep > 60:
             requeue_stale()
+            periodic()
             last_sweep = time.time()
         if not run_once():
             time.sleep(1.0)

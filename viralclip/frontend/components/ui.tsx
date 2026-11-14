@@ -48,6 +48,7 @@ const STATUS_TONE: Record<string, keyof typeof TONES> = {
   uploaded: "blue", ready: "green", done: "green", approved: "green", published: "green", scheduled: "blue",
   uploading: "amber", processing: "amber", queued: "amber", running: "amber", rendering: "amber", cancel_requested: "amber",
   failed: "red", rejected: "red", cancelled: "gray", suggested: "gray", none: "gray",
+  importing: "amber", paused: "gray", quota_exceeded: "amber", auth_required: "red", schedule_failed: "red",
 };
 
 export function Badge({ children, tone = "gray" }: { children: ReactNode; tone?: keyof typeof TONES }) {
@@ -55,7 +56,7 @@ export function Badge({ children, tone = "gray" }: { children: ReactNode; tone?:
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  return <Badge tone={STATUS_TONE[status] ?? "gray"}>{status.replace("_", " ")}</Badge>;
+  return <Badge tone={STATUS_TONE[status] ?? "gray"}>{status.replaceAll("_", " ")}</Badge>;
 }
 
 export function Progress({ value }: { value: number }) {
