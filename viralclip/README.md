@@ -72,11 +72,26 @@ Without Docker, install Ollama from ollama.com, run `ollama pull qwen2.5:7b-inst
 |---|---|---|---|
 | Transcription | faster-whisper `small`, batched | ~0.1× real time, so a 2 h stream takes ~12 min (measured: 10.5 min in 62 s) | `tiny` is ~2× faster and less accurate. `large-v3` is best but needs an NVIDIA GPU to be practical. Set `WHISPER_DEVICE=cuda` (auto-detected). |
 | Clip scoring | built-in heuristic | instant | Transparent; always on. |
-| Titles / re-ranking | none, or any OpenAI-compatible LLM | 3B model: ~40 s per clip | Use a **7B+ model** (e.g. `qwen2.5:7b-instruct` via Ollama). 3B models invent details and drift languages; the app filters the worst of it, but you must review. |
+| Titles / re-ranking | none, or any OpenAI-compatible LLM | 3B model: ~25 s per clip (8 clips in ~200 s) | See "Fast AI setup" below. Small models invent details and drift languages; the app filters the worst of it, but you must review. |
 | Rendering | ffmpeg libx264 `veryfast` CRF 18 | ~0.4–0.5× clip length (measured: 45 s clip in 18 s) | Two workers by default, so renders don't wait behind transcription. |
 
 You don't need a GPU; everything has a CPU path.
 RAM: ~2 GB for `small`, ~5 GB for a 7B LLM, plus about 0.5 GB per hour of source video while it's being transcribed.
+
+### Fast AI setup
+
+The AI step re-ranks the shortlisted moments, then writes titles, descriptions and hashtags for several clips per request (`LLM_BATCH`, default 4). Measured on 4 CPU cores (llama.cpp, q4_k_m), 8 clips from a 9-minute talk, re-rank plus metadata:
+
+| Model | Before | Now |
+|---|---|---|
+| `qwen2.5:3b-instruct` | 501 s (63 s/clip) | 196 s (25 s/clip) |
+| `qwen2.5:1.5b-instruct` | 291 s (36 s/clip) | 186 s (23 s/clip) |
+
+- **CPU only:** `ollama pull qwen2.5:3b-instruct`. It gives the best speed for the quality on CPU; 1.5B is faster, but its titles are noticeably weaker.
+- **NVIDIA/Apple GPU:** `ollama pull qwen2.5:7b-instruct`. A GPU makes the AI step roughly 10× faster (typical for llama.cpp; not measured on this machine), so a 7B model, which writes the best titles, fits comfortably.
+- **No LLM at all:** leave `LLM_BASE_URL` empty. Titles come instantly from the clip's own strongest lines (labeled "Basic").
+
+Knobs, all optional: `LLM_TIMEOUT` (per request, default 90 s), `LLM_BUDGET` (whole AI step per analysis, default 300 s; clips past it get basic metadata labeled `+timeout` and a background metadata job retries them), `LLM_CONCURRENCY` (default 1; set 2 only if the server has parallel slots, e.g. Ollama with `OLLAMA_NUM_PARALLEL=2`), `LLM_BATCH`.
 
 ## Costs
 

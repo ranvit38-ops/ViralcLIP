@@ -65,11 +65,17 @@ def _map(fn, items: list) -> list:
         return list(ex.map(fn, items))
 
 
-def chat_json(system: str, user: str, timeout: float = CALL_TIMEOUT, max_tokens: int | None = None) -> dict:
-    """One chat completion that must return a JSON object. Raises on any failure."""
+def chat_json(system: str, user: str, timeout: float = CALL_TIMEOUT, max_tokens: int | None = None,
+              strict: bool = True) -> dict:
+    """One chat completion that must return a JSON object. Raises on any failure.
+
+    strict=False skips response_format: grammar-constrained sampling made llama.cpp ~1.7x slower per request in our
+    measurements, and instruct models reply with plain JSON anyway. Callers retry failures with strict=True.
+    """
     body = {"model": os.environ["LLM_MODEL"], "temperature": 0.3,
-            "response_format": {"type": "json_object"},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+    if strict:
+        body["response_format"] = {"type": "json_object"}
     if max_tokens:
         body["max_tokens"] = max_tokens  # small models ramble; this caps the slowest part (generation)
     headers = {"Content-Type": "application/json"}
@@ -79,30 +85,41 @@ def chat_json(system: str, user: str, timeout: float = CALL_TIMEOUT, max_tokens:
                                  data=json.dumps(body).encode(), headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         content = json.loads(r.read())["choices"][0]["message"]["content"]
-    m = re.search(r"\{.*\}", content, re.S)
-    if not m:
+    start = content.find("{")
+    if start < 0:
         raise ValueError("LLM did not return JSON")
-    return json.loads(m.group(0))
+    out = json.JSONDecoder().raw_decode(content[start:])[0]  # first object; small models sometimes append more
+    if not isinstance(out, dict):
+        raise ValueError("LLM did not return a JSON object")
+    return out
 
 
 # ---------- clip reranking ----------
 
 RERANK_SYSTEM = ("You judge video excerpts as standalone short-form clips. Rate each 0-100 for a viewer with no context: "
                  "strong opening, clear point, complete ending, interesting. Be strict; do not predict views. "
-                 'Reply JSON: {"clips":[{"id":<id>,"score":<0-100>,"reason":"<max 12 words>"}]}')
+                 'Reply with compact one-line JSON only: {"clips":[{"id":<id>,"score":<0-100>,"reason":"<max 12 words>"}]}')
 
 
-def rerank(cands: list[dict], batch: int = 8, until: float | None = None) -> list[dict]:
+def rerank(cands: list[dict], batch: int = 10, until: float | None = None) -> list[dict]:
     """Blend LLM judgement (0-100) into heuristic scores. Failures and the time budget leave candidates unchanged."""
+    calls = -(-len(cands) // batch)
+    batch = max(1, -(-len(cands) // max(1, calls)))  # balanced: 17 -> 9+8, 24 -> 8+8+8
+
     def judge(i: int) -> dict:
         chunk = cands[i:i + batch]
-        user = "\n\n".join(f"[id={i + k}] {c['text'][:EXCERPT]}" for k, c in enumerate(chunk))
-        try:
-            out = chat_json(RERANK_SYSTEM, user, _timeout(until), max_tokens=40 * len(chunk) + 40)
-            return {int(x["id"]): x for x in out.get("clips", []) if isinstance(x, dict) and "id" in x}
-        except Exception as e:  # noqa: BLE001 - LLM is optional; keep heuristic result
-            log.warning("LLM rerank failed: %s", e)
-            return {}
+        # ids are 1..n per request: models given ids 9..17 often answer 0..8
+        user = "\n\n".join(f"[id={k + 1}] {c['text'][:EXCERPT]}" for k, c in enumerate(chunk))
+        for strict in (False, True):  # fast unconstrained first; strict JSON mode only if that didn't parse
+            try:
+                out = chat_json(RERANK_SYSTEM, user, _timeout(until), max_tokens=50 * len(chunk) + 40, strict=strict)
+                return {i + int(x["id"]) - 1: x for x in out.get("clips", [])
+                        if isinstance(x, dict) and str(x.get("id")).isdigit() and 1 <= int(x["id"]) <= len(chunk)}
+            except Exception as e:  # noqa: BLE001 - LLM is optional; keep heuristic result
+                log.warning("LLM rerank failed (strict=%s): %s", strict, e)
+                if isinstance(e, (TimeoutError, OSError)):
+                    break  # slow or down: a retry would only eat the budget
+        return {}
     got = {k: x for d in _map(judge, list(range(0, len(cands), batch))) for k, x in d.items()}
     for k, c in enumerate(cands):
         x = got.get(k)
@@ -136,6 +153,8 @@ def hashtag_ranking(items: list[dict]) -> list[str]:
 
 
 def _sources(examples: dict) -> dict:
+    if examples.get("sources"):  # provenance already built by trends.sources
+        return examples["sources"]
     return {"query": examples.get("query", ""),
             "similar": [{"title": x["title"], "views": x.get("views", 0), "url": x.get("url", "")}
                         for x in examples["items"][:5]]}
@@ -208,10 +227,10 @@ def _system_prompt(prefs: dict, lang: str | None, examples: bool) -> str:
          f"Category: {prefs.get('category') or 'auto-detect'}. " + (f"Niche / game: {niche}. " if niche else "") +
          f"Write everything in {LANG_NAMES.get(lang or '', lang or 'the language of the transcript')} only. "
          "Refer to the speaker neutrally; never assume their gender. "
-         "For EACH clip, about that clip only: 4 different titles in different styles, "
+         "For EACH clip, about that clip only: 4 different titles (plain strings) in different styles, "
          f"a description of {'1-2' if short else '3-5'} sentences (natural keywords, no hashtags), "
          f"and exactly {int(prefs.get('hashtag_count') or 5)} specific hashtags without '#'. "
-         'Reply JSON: {"clips":[{"id":<id>,"titles":["..."],"description":"...","hashtags":["..."]}]}')
+         'Reply with compact one-line JSON only: {"clips":[{"id":<id>,"titles":["..."],"description":"...","hashtags":["..."]}]}')
     if examples:
         s += (" Similar Shorts that performed well are given as style examples: match their length, hook and phrasing, "
               "but write only about the clip. Never copy a title verbatim and make no claim the transcript doesn't "
@@ -221,19 +240,29 @@ def _system_prompt(prefs: dict, lang: str | None, examples: bool) -> str:
 
 
 def _merge_examples(examples: list[dict | None]) -> list[dict]:
-    """The batch's similar Shorts, deduplicated by title, most viewed first: sent once per request."""
+    """The batch's examples, deduplicated by title, most viewed first (up to 5 own, 8 similar): sent once per request."""
     seen = {}
     for ex in examples:
         for x in (ex or {}).get("items") or []:
             seen.setdefault(str(x.get("title", "")).strip().lower(), x)
-    return sorted((x for k, x in seen.items() if k), key=lambda x: -int(x.get("views") or 0))[:8]
+    xs = sorted((x for k, x in seen.items() if k), key=lambda x: -int(x.get("views") or 0))
+    return [x for x in xs if x.get("source") == "own"][:5] + [x for x in xs if x.get("source") != "own"][:8]
+
+
+def _titles(raw: dict) -> list[str]:
+    ts = raw.get("titles") if isinstance(raw.get("titles"), list) else []
+    ts = [t.get("text") or t.get("title") or "" if isinstance(t, dict) else t for t in ts]  # {"style","text"} drift
+    return [re.sub(r"\s+", " ", str(t)).strip().strip('"').lstrip("?!.,:;-–— ")[:100] for t in ts]
+
+
+def _stems(s: str) -> set[str]:
+    return {w[:5] for w in re.findall(r"[a-z]{4,}", s.lower()) if w not in STOP}
 
 
 def _finish(raw: dict, text: str, prefs: dict, lang: str | None, examples: dict | None, copied: set) -> dict:
     """Sanitize one clip's LLM reply and top it up from the basic generator. Raises ValueError if unusable."""
     n = int(prefs.get("hashtag_count") or 5)
-    titles = [re.sub(r"\s+", " ", str(t)).strip().strip('"').lstrip("?!.,:;-–— ")[:100] for t in raw.get("titles") or []]
-    titles = [t for t in titles if _usable_title(t, lang) and t.lower() not in copied]
+    titles = [t for t in _titles(raw) if _usable_title(t, lang) and t.lower() not in copied]
     tags = list(dict.fromkeys(t for t in (_clean_tag(h) for h in raw.get("hashtags") or []) if t))[:max(n, 3)]
     desc = str(raw.get("description", "")).strip()[:4500]
     if lang and lang not in ("zh", "ja", "ko") and CJK.search(desc):
@@ -250,16 +279,22 @@ def _finish(raw: dict, text: str, prefs: dict, lang: str | None, examples: dict 
 
 
 def _llm_batch(texts: list[str], examples: list[dict | None], prefs: dict, lang: str | None,
-               until: float | None) -> list[dict | None]:
+               until: float | None, strict: bool = False) -> list[dict | None]:
     """One request for several clips. One result per clip; None where the reply was missing or unusable."""
     shared = _merge_examples(examples)
-    user = ""
+    own = [x for x in shared if x.get("source") == "own"]
+    sim = [x for x in shared if x.get("source") != "own"]
+
+    def listing(head, xs):
+        return head + "\n" + "".join(f'- "{x["title"]}" ({int(x.get("views") or 0):,} views)\n' for x in xs) if xs else ""
+    user = listing("Your own best-performing clips (what works for this channel; style only):", own) \
+        + listing("Similar Shorts that did well (style examples only, not about these clips):", sim)
     if shared:
-        user = ("Similar Shorts that did well (style examples only, not about these clips):\n"
-                + "\n".join(f'- "{x["title"]}" ({int(x.get("views") or 0):,} views)' for x in shared)
-                + "\nHashtags they use, most frequent first: " + ", ".join(hashtag_ranking(shared)[:15]) + "\n\n")
+        user += "Hashtags they use, most frequent first: " + ", ".join(hashtag_ranking(shared)[:15]) + "\n\n"
     user += "\n\n".join(f"Clip [id={k + 1}] transcript:\n{t[:EXCERPT]}" for k, t in enumerate(texts))
-    out = chat_json(_system_prompt(prefs, lang, bool(shared)), user, _timeout(until), max_tokens=220 * len(texts) + 40)
+    # First pass unconstrained (fast); the per-clip retry uses strict JSON mode.
+    out = chat_json(_system_prompt(prefs, lang, bool(shared)), user, _timeout(until),
+                    max_tokens=300 * len(texts) + 40, strict=strict)
     clips = out.get("clips")
     if not isinstance(clips, list):
         clips = [{**out, "id": 1}] if len(texts) == 1 else []  # a lone clip often comes back unwrapped
@@ -272,10 +307,17 @@ def _llm_batch(texts: list[str], examples: list[dict | None], prefs: dict, lang:
     if len(texts) == 1 and not by_id and len(clips) == 1 and isinstance(clips[0], dict):
         by_id[1] = clips[0]
     copied = {str(x["title"]).strip().lower() for x in shared}
-    res = []
+    res, seen = [], set()
     for k, t in enumerate(texts):
         try:
-            res.append(_finish(by_id[k + 1], t, prefs, lang, examples[k], copied))
+            raw = by_id[k + 1]
+            if len(texts) > 1:  # small models copy one clip's titles onto the next ("... (Part 2)")
+                ts = _titles(raw)
+                keys = {re.sub(r"part\s*\d+|\W", "", x.lower()) for x in ts}
+                if keys & seen or not any(_stems(x) & _stems(t) for x in ts):
+                    raise ValueError("titles repeat another clip or don't match this transcript")
+                seen |= keys
+            res.append(_finish(raw, t, prefs, lang, examples[k], copied))
         except Exception as e:  # noqa: BLE001 - missing or unusable: the caller retries this clip alone
             log.warning("LLM metadata unusable for clip %d of %d: %s", k + 1, len(texts), e)
             res.append(None)
@@ -295,9 +337,9 @@ def generate_metadata_batch(texts: list[str], prefs: dict, language: str | None 
         lang = prefs.get("language") or language
         todo = [i for i, t in enumerate(texts) if t]
 
-        def run(idx: list[int]):
+        def run(idx: list[int], strict: bool = False):
             try:
-                got = _llm_batch([texts[i] for i in idx], [examples[i] for i in idx], prefs, lang, until)
+                got = _llm_batch([texts[i] for i in idx], [examples[i] for i in idx], prefs, lang, until, strict)
             except Exception as e:  # noqa: BLE001
                 log.warning("LLM metadata failed for %d clip(s): %s", len(idx), e)
                 return
@@ -305,7 +347,7 @@ def generate_metadata_batch(texts: list[str], prefs: dict, language: str | None 
                 out[i] = m
         batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
         _map(run, batches)
-        _map(run, [[i] for b in batches if len(b) > 1 for i in b if out[i] is None])
+        _map(lambda i: run([i], strict=True), [i for i in todo if out[i] is None])  # one retry per clip
     late = until is not None and until - time.monotonic() < 5
     for i, m in enumerate(out):
         if m is None:

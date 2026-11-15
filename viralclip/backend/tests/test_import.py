@@ -333,7 +333,7 @@ def test_own_examples_reach_the_generate_prompt(google, monkeypatch):  # noqa: F
         db.commit()
     seen = {}
 
-    def fake(system, user, timeout=180):
+    def fake(system, user, *a, **k):
         seen["user"] = user
         return {"titles": ["A heist that went wrong"], "description": "d", "hashtags": ["heist"]}
     monkeypatch.setenv("LLM_BASE_URL", "http://x")

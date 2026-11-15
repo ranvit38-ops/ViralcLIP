@@ -276,17 +276,15 @@ RESEARCHED = {"titles", "hashtags"}  # fields similar-Shorts research can influe
 
 
 def similar(user_id: int, text: str, prefs: dict, language: str | None) -> dict | None:
-    """Similar-Shorts examples {"query", "items"} to style one clip's metadata, or None. Never raises."""
-    if not text:
-        return None
+    """Style examples {"query", "items", "sources"} for one clip's metadata (own winners + similar Shorts), or None."""
     try:
-        if hasattr(trends, "examples_for"):
-            items = trends.examples_for(user_id, text, prefs, language)
-            return {"query": "", "items": items} if items else None
-        niche = prefs.get("niche") or (prefs.get("category") if prefs.get("category") not in ("auto", "auto-detect") else "")
-        return trends.find_similar(user_id, text, niche, prefs.get("language") or language)
-    except Exception as e:  # noqa: BLE001 - research is optional
-        log.warning("YouTube research failed, generating without it: %s", e)
+        items = trends.examples_for(user_id, text, prefs, language) if text else []
+        if not items:
+            return None
+        src = trends.sources(items, text, prefs)
+        return {"query": src["query"], "items": items, "sources": src}
+    except Exception as e:  # noqa: BLE001 - examples are optional
+        log.warning("Metadata examples failed, generating without them: %s", e)
         return None
 
 
