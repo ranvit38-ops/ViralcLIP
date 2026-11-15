@@ -113,6 +113,12 @@ def _get(db: Session, user_id: int, src: str, path: str, params: dict) -> dict:
         db.execute(update(ResearchUsage).where(ResearchUsage.day == youtube.pacific_day()).values(quota_exceeded=True))
         db.commit()
         raise QuotaExceeded()
+    if r.status_code in (400, 401, 403):
+        # Bad/restricted key or forbidden: retrying on every clip would burn the budget, so pause for the day.
+        db.execute(update(ResearchUsage).where(ResearchUsage.day == youtube.pacific_day()).values(quota_exceeded=True))
+        db.commit()
+        log.warning("YouTube research disabled until tomorrow: %s %s", r.status_code, youtube._google_error(r)[0])
+        raise QuotaExceeded()
     if r.status_code >= 300:
         raise RuntimeError(f"YouTube research {path} failed ({r.status_code}: {youtube._google_error(r)[0]})")
     return r.json()

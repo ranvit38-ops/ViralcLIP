@@ -29,7 +29,9 @@ def test_stop_waits_for_the_launcher_to_exit(tmp_path):
             "signal.signal(signal.SIGTERM, lambda *_: (time.sleep(1.5), sys.exit(0)))\n"
             "print('ready', flush=True)\n"
             "time.sleep(60)\n")
-    p = subprocess.Popen([sys.executable, "-c", slow], stdout=subprocess.PIPE, text=True)
+    fake = tmp_path / "run.py"  # named like the launcher, which stop_background checks before killing
+    fake.write_text(slow)
+    p = subprocess.Popen([sys.executable, str(fake)], stdout=subprocess.PIPE, text=True)
     p.stdout.readline()
     threading.Thread(target=p.wait, daemon=True).start()  # reap it, as init reaps a detached launcher
     pidfile = tmp_path / "launcher.pid"
@@ -39,3 +41,10 @@ def test_stop_waits_for_the_launcher_to_exit(tmp_path):
     assert time.time() - t0 >= 1.0
     assert p.poll() is not None
     assert not pidfile.exists()
+
+    # a stale pidfile pointing at some other program is never killed
+    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    pidfile.write_text(str(other.pid))
+    run.stop_background(pidfile)
+    assert other.poll() is None and not pidfile.exists()
+    other.kill()

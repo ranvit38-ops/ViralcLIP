@@ -172,6 +172,16 @@ def main():
     env.setdefault("APP_URL", f"http://localhost:{a.port}")
     # Relative paths in .env are relative to backend/ (where the API and workers run).
     env["VC_DATA_DIR"] = str((BACKEND / env.get("VC_DATA_DIR", "data")).resolve())
+    # The database lives with the rest of the data (so moving data to D: moves it too).
+    if env.get("DATABASE_URL", "sqlite:///./data/viralclip.db") == "sqlite:///./data/viralclip.db":
+        new_db = Path(env["VC_DATA_DIR"]) / "viralclip.db"
+        old_db = BACKEND / "data" / "viralclip.db"
+        if old_db.exists() and not new_db.exists() and old_db.resolve() != new_db.resolve():
+            new_db.parent.mkdir(parents=True, exist_ok=True)
+            for suffix in ("", "-wal", "-shm"):
+                if Path(str(old_db) + suffix).exists():
+                    shutil.move(str(old_db) + suffix, str(new_db) + suffix)
+        env["DATABASE_URL"] = f"sqlite:///{new_db.as_posix()}"
     # Keep the speech models next to the app (same drive), not in the user's C: profile.
     env.setdefault("HF_HOME", str(Path(env["VC_DATA_DIR"]) / "models"))
     # Download caches too: everything stays on the drive ViralClip lives on.
@@ -242,11 +252,28 @@ def main():
         pidfile.unlink(missing_ok=True)
 
 
+def _is_launcher(pid: int) -> bool:
+    try:
+        if WIN:
+            out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                                  f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine"],
+                                 capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW).stdout
+        else:
+            out = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="ignore")
+        return "run.py" in out
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def stop_background(pidfile: Path):
     if not pidfile.exists():
         say("ViralClip isn't running in the background.")
         return
     pid = int(pidfile.read_text().strip())
+    if not _is_launcher(pid):  # stale pidfile: the ID may now belong to some other program
+        pidfile.unlink(missing_ok=True)
+        say("ViralClip isn't running in the background.")
+        return
     if WIN:
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True)
     else:

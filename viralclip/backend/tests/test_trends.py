@@ -197,6 +197,14 @@ def test_research_errors_never_break_metadata(yt, monkeypatch):
     u = uid(new_client())
     yt.fail = "keyInvalid"
     assert trends.generate(u, HEIST, {}, "en")["method"] == "basic"
+    # a bad key pauses research for the day instead of burning a search on every clip
+    from app.db import SessionLocal
+    from app.models import ResearchUsage
+    with SessionLocal() as db:
+        assert trends.status(db, u)["available"] is False
+        db.query(ResearchUsage).delete()
+        db.commit()
+    yt.fail = None
 
     def down(req):
         raise httpx.ConnectError("no route")

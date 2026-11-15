@@ -43,7 +43,7 @@ _Last updated: all planned phases are implemented. What's verified and what isn'
 - **No background music or B-roll.** Copyright and licensing make these a liability.
 - **No light theme.**
 - **Single API process.** The upload offset lock and login throttle are in-memory. Workers scale freely.
-- **Loading audio for transcription takes ~0.5 GB of RAM per hour of source.**
+- **Transcription RAM is flat in source length** (audio is streamed in ~10 min chunks): about 2.7 GB peak worker RSS with `small`. `WHISPER_BATCH=4` lowers it at ~20% speed cost.
 
 ## Next tasks, if needed
 

@@ -22,6 +22,18 @@ if ((Test-Path $oldCopy) -and -not (Test-Path $Target)) {
   Write-Host "Moved." -ForegroundColor Green
 }
 
+# Keep autostart working: point the Startup shortcut (from autostart.ps1) at the new location.
+$link = Join-Path ([Environment]::GetFolderPath("Startup")) "ViralClip.lnk"
+if ((Test-Path $link) -and (Test-Path $Target)) {
+  $sh = New-Object -ComObject WScript.Shell
+  $s = $sh.CreateShortcut($link)
+  $newDir = Join-Path $Target "viralclip"
+  $s.Arguments = $s.Arguments -replace [regex]::Escape($oldCopy + "\viralclip"), $newDir
+  $s.WorkingDirectory = $newDir
+  $s.Save()
+  Write-Host "Updated the autostart shortcut to $newDir." -ForegroundColor Green
+}
+
 # 2. ViralClip's downloads on C: (only ViralClip's — other apps' files are left alone)
 $hf = Join-Path $HOME ".cache\huggingface\hub"
 $items = @()
