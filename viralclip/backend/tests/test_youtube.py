@@ -425,3 +425,19 @@ def test_import_own_video_downloads_and_probes(google, monkeypatch):
     assert c.get(f"/api/projects/{pid}/source").status_code == 200
     with SessionLocal() as db:
         assert db.get(Job, jid).status == "done"
+
+
+def test_missed_slot_is_rescheduled_not_dropped(google):
+    """If a quota wait or outage outlasts the slot, publish an hour after upload instead of staying private forever."""
+    c = new_client()
+    aid = connect(c)
+    cid = make_clip(c)
+    uid = c.post("/api/youtube/uploads", json={"clip_ids": [cid], "account_id": aid, "timezone": "UTC",
+                                               "publish_at": future_local()}).json()[0]["id"]
+    with SessionLocal() as db:  # simulate the slot passing while the upload waited
+        db.get(YouTubeUpload, uid).publish_at = now() - timedelta(hours=3)
+        db.commit()
+    u, _ = run_upload(uid)
+    assert (u.upload_status, u.schedule_status) == ("uploaded", "scheduled")
+    publish_at = next(iter(google.sessions.values()))["meta"]["status"]["publishAt"]
+    assert datetime.fromisoformat(publish_at.replace("Z", "+00:00")) > datetime.now(timezone.utc)

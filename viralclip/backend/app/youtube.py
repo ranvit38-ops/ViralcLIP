@@ -676,10 +676,10 @@ def _run_upload(db: Session, job_id: int, ctx) -> None:
             publish = None
             if u.publish_at:
                 if _aware(u.publish_at) <= now() + timedelta(minutes=2):
-                    u.schedule_status = "failed"
-                    u.error = "The scheduled time passed before the upload could start, so it was uploaded as private without a schedule."
-                else:
-                    publish = _aware(u.publish_at).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                    # The slot passed while waiting (quota, outage): publish an hour after upload instead of never.
+                    u.publish_at = now() + timedelta(hours=1)
+                    ctx.progress(0, "Scheduled time passed while waiting; publishing 1 hour after upload")
+                publish = _aware(u.publish_at).strftime("%Y-%m-%dT%H:%M:%S.000Z")
             status = {"privacyStatus": u.privacy, "selfDeclaredMadeForKids": False}
             if publish:
                 status["publishAt"] = publish

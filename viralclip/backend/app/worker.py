@@ -71,6 +71,11 @@ def requeue_stale():
                 j.status, j.finished_at = "cancelled", now()
             elif j.attempts >= MAX_ATTEMPTS:
                 j.status, j.error, j.finished_at = "failed", "Worker stopped repeatedly while running this job.", now()
+                # Don't leave the clip/project stuck in an in-progress state nothing will ever finish.
+                if j.clip is not None and j.clip.render_status in ("queued", "rendering"):
+                    j.clip.render_status = "failed"
+                if j.job_type == "analyze" and j.project.status == "processing":
+                    j.project.status = "ready" if j.project.clips else "uploaded"
             else:
                 j.status, j.message = "queued", "Requeued after worker restart"
         db.commit()

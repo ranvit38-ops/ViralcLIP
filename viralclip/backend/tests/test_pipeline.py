@@ -243,3 +243,26 @@ def test_talking_head_crop_with_zoom(monkeypatch, tmp_path):
     out = _render_direct(src, "auto", monkeypatch, tmp_path)
     vs = next(s for s in probe(out)["streams"] if s["codec_type"] == "video")
     assert (vs["width"], vs["height"]) == (1080, 1920)
+
+
+def test_job_dead_too_often_releases_clip_and_project():
+    from datetime import timedelta
+    from app.db import SessionLocal
+    from app.models import Clip, Job, Project, now
+    c = new_client()
+    pid, _ = upload(c, speech_video() if shutil.which("espeak-ng") else __import__("tests.conftest").conftest.make_video("a.mp4"))
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        p.status = "processing"
+        clip = Clip(project_id=pid, start=0, end=5, render_status="rendering")
+        db.add(clip)
+        db.flush()
+        stale = now() - timedelta(hours=1)
+        db.add_all([Job(project_id=pid, job_type="analyze", status="running", attempts=3, heartbeat_at=stale),
+                    Job(project_id=pid, clip_id=clip.id, job_type="render", status="running", attempts=3, heartbeat_at=stale)])
+        db.commit()
+        cid = clip.id
+    worker.requeue_stale()
+    with SessionLocal() as db:
+        assert db.get(Clip, cid).render_status == "failed"
+        assert db.get(Project, pid).status == "ready"
