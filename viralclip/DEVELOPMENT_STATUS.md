@@ -11,7 +11,7 @@ _Last updated: all planned phases are implemented. What's verified and what isn'
 | Transcription | faster-whisper with word timestamps and real progress; models download on first use; CPU or GPU | Real Whisper tiny and small on synthesized speech |
 | Clip finding | Sentence-bounded windows; transparent score (hook, standalone, completeness, value, pacing, energy) with reasons; no overlapping duplicates; transition and housekeeping lines avoided; loudness-peak fallback for no-speech footage | pytest on a real transcript |
 | AI (optional) | Any OpenAI-compatible LLM re-ranks clips and writes 4 titles, a description and hashtags; filters placeholders, wrong-language output and stray punctuation; falls back to basic suggestions | Real Qwen2.5-3B via llama.cpp, plus pytest with mocks |
-| Rendering | 9:16 / 1:1 / 4:5 / 16:9; **face-tracked crop**; **streamer split screen** (facecam top, gameplay bottom, auto-detected); blurred-background fit; **jump cuts**; **punch-in zoom**; **hook title**; word-highlight captions (4 presets, full style control, editable text); -14 LUFS audio; H.264 CRF 18 | Real renders checked frame by frame (real face image) + pytest |
+| Rendering | 9:16 / 1:1 / 4:5 / 16:9; **face-tracked crop**; **streamer split screen** (facecam top, gameplay bottom, auto-detected); blurred-background fit; **active-speaker crop** (2+ people); **jump cuts** (pauses, retakes, um/uh fillers; edges snapped to the quietest point); **punch-in zoom**; **hook title**; word-highlight captions (4 presets, full style control, editable text); -14 LUFS audio; H.264 CRF 18 | Real renders checked frame by frame (real face image) + pytest |
 | Editing | Trim, aspect, layout, crop position, caption style and text, Shorts effects, title/description/hashtags, regenerate (never overwrites an edited title), approve/reject, delete | 38-check browser end-to-end |
 | Clips library | Filters, search, bulk approve / render / zip download / publish | Browser end-to-end |
 | Jobs | DB-backed worker; real progress; cancel and retry; restart-safe; stale jobs requeued; parallel workers | pytest |
@@ -35,7 +35,7 @@ _Last updated: all planned phases are implemented. What's verified and what isn'
 
 - **Unaudited Google Cloud projects can only upload private videos.** Public or scheduled publishing needs Google's audit. Default quota is about 6 uploads a day per Cloud project, not per channel.
 - **TikTok scheduling runs in our worker** (TikTok has no publish-at), so it only works while ViralClip is running. Unaudited TikTok apps can only post privately or send drafts.
-- **Face detection uses OpenCV's Haar cascade.** It's fast and needs no download, but it misses profile and turned faces. Speaker detection is "largest face"; there is no diarization.
+- **Face detection uses OpenCV's Haar cascade.** It's fast and needs no download, but it misses profile and turned faces. With two or more people on screen the crop follows whoever's mouth moves most (frame differencing, hysteresis); it's visual only, so there's no audio diarization, and a static box per person means people who walk around aren't tracked.
 - **Small local LLMs (3B) invent details.** Use 7B+ for titles you'd publish unreviewed.
 - **No emoji in captions.** libass can't render color emoji.
 - **No background music or B-roll.** Copyright and licensing make these a liability.
