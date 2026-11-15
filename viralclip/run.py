@@ -221,7 +221,7 @@ def main():
         stop(procs)
         die(f"The web app didn't start. See {logs / 'web.log'}")
 
-    pidfile.write_text(str(os.getpid()))
+    write_pid(pidfile)
     print(f"\n  ViralClip is running:  {url}\n  Logs: {logs}\n"
           + ("  Running in the background.\n" if a.background else
              "  Keep this window open, or run autostart.ps1 once so it runs in the background. Ctrl+C to stop.\n"),
@@ -250,6 +250,12 @@ def main():
     finally:
         stop(procs)
         pidfile.unlink(missing_ok=True)
+
+
+def write_pid(pidfile: Path):
+    # backend/data doesn't exist when VC_DATA_DIR points elsewhere; failing here orphaned every started part.
+    pidfile.parent.mkdir(parents=True, exist_ok=True)
+    pidfile.write_text(str(os.getpid()))
 
 
 def _is_launcher(pid: int) -> bool:

@@ -3,6 +3,9 @@ import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
+// Form controls default to full width; a caller's own base width (e.g. "w-28") replaces it, since in the
+// generated CSS w-full comes after w-28 and would otherwise always win.
+const fullUnlessSized = (className?: string) => (/(^|\s)w-/.test(className ?? "") ? "" : "w-full");
 
 const BTN = {
   primary: "bg-accent text-accent-fg hover:brightness-110",
@@ -25,7 +28,7 @@ export function Card({ className, ...p }: ComponentProps<"div">) {
 }
 
 export function Input({ className, ...p }: ComponentProps<"input">) {
-  return <input className={cx("h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none focus:border-accent placeholder:text-muted/60", className)} {...p} />;
+  return <input className={cx("h-9 rounded-md border border-line bg-bg px-3 text-sm outline-none focus:border-accent placeholder:text-muted/60", fullUnlessSized(className), className)} {...p} />;
 }
 
 /** Labeled form control. Use `group` when the children are several buttons (a <label> would name them all). */
@@ -55,11 +58,11 @@ const STATUS_TONE: Record<string, keyof typeof TONES> = {
 };
 
 export function Select({ className, ...p }: ComponentProps<"select">) {
-  return <select className={cx("h-9 w-full rounded-md border border-line bg-bg px-2 text-sm outline-none focus:border-accent", className)} {...p} />;
+  return <select className={cx("h-9 rounded-md border border-line bg-bg px-2 text-sm outline-none focus:border-accent", fullUnlessSized(className), className)} {...p} />;
 }
 
 export function Textarea({ className, ...p }: ComponentProps<"textarea">) {
-  return <textarea className={cx("w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent placeholder:text-muted/60", className)} {...p} />;
+  return <textarea className={cx("rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent placeholder:text-muted/60", fullUnlessSized(className), className)} {...p} />;
 }
 
 /** Card section with a heading row. */

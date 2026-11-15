@@ -211,4 +211,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # `python -m app.worker` loads this file as __main__, but handlers import `app.worker`: a second copy with
+    # its own UserError/Cancelled classes. Run that copy so run_job's `except UserError` matches what they raise.
+    from app.worker import main as _main
+    _main()

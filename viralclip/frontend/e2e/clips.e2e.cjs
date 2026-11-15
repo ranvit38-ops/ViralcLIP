@@ -63,6 +63,11 @@ let page;
   check((await page.getByLabel("Clip length").inputValue()) === "15–30 s", "settings: length persisted");
   await shot("settings");
 
+  // sized form controls keep their width (Input's default w-full used to override className="w-28")
+  await page.getByRole("link", { name: "Automation" }).click();
+  const minsBox = await page.getByLabel("Skip videos shorter than (minutes)").boundingBox();
+  check(minsBox && minsBox.width < 150, `automation minutes input keeps its w-28 width (${minsBox?.width}px)`);
+
   // --- upload
   await page.getByRole("link", { name: "Create Project" }).click();
   await page.setInputFiles("input[type=file]", VIDEO);
