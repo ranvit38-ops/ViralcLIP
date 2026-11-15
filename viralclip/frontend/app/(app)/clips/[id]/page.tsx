@@ -527,7 +527,7 @@ export default function ClipEditor() {
           )}
 
           <Section title="Title, description & hashtags" actions={
-            <span className="text-xs text-muted">{metaMethod.startsWith("llm") ? "Written by AI from the transcript" : metaMethod.startsWith("basic") ? "Basic suggestions (no AI model configured)" : ""}</span>
+            <span className="text-xs text-muted">{metaMethod.startsWith("llm") ? "Written by AI from the transcript" : metaMethod === "basic+timeout" ? "AI timed out — basic suggestions for now, AI retry queued" : metaMethod.startsWith("basic") ? "Basic suggestions (no AI model configured)" : ""}</span>
           }>
             <div className="space-y-4">
               {similar.length > 0 && (
