@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from sqlalchemy import delete, select
 
-from . import config, llm, selection
+from . import config, llm, longaudio, selection
 from .db import SessionLocal
 from .models import Clip, Job, Project, Transcript, User
 from .projects import project_dir, source_path
@@ -53,10 +53,11 @@ def render_settings(clip: Clip, user_settings: dict | None = None) -> dict:
 
 # ---------------------------------------------------------------- audio / transcription
 
-def decode_audio(src: Path, start: float = 0.0, dur: float | None = None) -> np.ndarray:
-    rng = ["-ss", f"{start:.3f}", "-t", f"{dur:.3f}"] if dur is not None else []
-    r = subprocess.run([config.FFMPEG, "-v", "error", *rng, "-i", str(src), "-vn", "-ac", "1", "-ar", str(SR),
-                        "-f", "f32le", "pipe:"], capture_output=True, timeout=3600)
+def decode_audio(src: Path, start: float, dur: float) -> np.ndarray:
+    """A short stretch of audio (a clip) in memory. Whole sources go through scan_audio, which streams."""
+    r = longaudio.run([config.FFMPEG, "-v", "error", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-vn",
+                       "-ac", "1", "-ar", str(SR), "-f", "f32le", "pipe:"], 60 + dur, "Reading the clip's audio",
+                      capture_output=True)
     if r.returncode != 0:
         raise UserError("Could not extract audio from this video.")
     return np.frombuffer(r.stdout, np.float32)
@@ -67,6 +68,32 @@ def loudness_per_second(audio: np.ndarray) -> list[float]:
     if n == 0:
         return []
     return np.sqrt(np.mean(audio[: n * SR].reshape(n, SR) ** 2, axis=1)).round(5).tolist()
+
+
+# Transcription chunk length: memory no longer grows with source length (measured, tiny: 10.5 min -> +846 MB,
+# 2 h -> +890 MB; was +1807 MB). Most of what remains is Whisper's batch working set, set by WHISPER_BATCH.
+CHUNK_S = float(os.getenv("WHISPER_CHUNK_S", "600"))
+
+
+def scan_audio(src: Path, duration: float, model: str | None, language: str | None, ctx: Ctx, lo: float, hi: float,
+               chunk_s: float = CHUNK_S):
+    """One streaming pass over the source's audio -> (loudness/s, impact/s, (segments, language) or None).
+    Transcribes only when `model` is given (no cached transcript). Memory stays flat for any length."""
+    loud, impact, duration = [], selection.ImpactStream(SR), duration or 0.0
+
+    def blocks():
+        for b in longaudio.stream(config.FFMPEG, src, SR):
+            loud.extend(loudness_per_second(b))  # blocks are whole seconds, except the last
+            impact.add(b)
+            yield b
+
+    tr = None
+    if model:
+        tr = transcribe(longaudio.chunks(blocks(), SR, chunk_s), model, language, ctx, lo, hi, duration)
+    else:
+        for _ in blocks():
+            ctx.progress(lo + (hi - lo) * min(1.0, len(loud) / max(duration, 1)), "Analyzing audio")
+    return loud, impact.result(), tr
 
 
 _models: dict = {}
@@ -92,21 +119,29 @@ def whisper_model(name: str):
 WHISPER_MODELS = ["tiny", "base", "small", "medium", "large-v3"]
 
 
-def transcribe(audio: np.ndarray, model: str, language: str | None, ctx: Ctx, lo: float, hi: float):
-    duration = len(audio) / SR
+def transcribe(chunks, model: str, language: str | None, ctx: Ctx, lo: float, hi: float, duration: float):
+    """chunks: (t0, audio, keep_end) from longaudio.chunks. Each is transcribed on its own (the first one detects
+    the language for the rest) and its words are stitched on by timestamp, so the overlap is neither lost nor doubled."""
     # Batched inference: same words, ~2.3x faster on CPU (measured: small, 10.5 min audio, 140 s -> 62 s).
     from faster_whisper import BatchedInferencePipeline
-    segs, info = BatchedInferencePipeline(whisper_model(model)).transcribe(
-        audio, word_timestamps=True, language=language or None, batch_size=int(os.getenv("WHISPER_BATCH", "8")))
-    out = []
-    for s in segs:  # generator: transcription happens as we iterate, so progress is real
-        out.append({"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip(),
-                    "words": [{"start": round(w.start, 2), "end": round(w.end, 2), "word": w.word,
-                               "probability": round(w.probability, 3)} for w in (s.words or [])]})
-        ctx.progress(lo + (hi - lo) * min(1.0, s.end / max(duration, 1)), f"Transcribing… {int(s.end // 60)}:{int(s.end % 60):02d}")
-    # The batched pipeline returns ~30 s chunks; regroup into sentences so the transcript viewer can seek
-    # to a sentence and speech coverage (used for the gameplay fallback) excludes long silences.
-    return [{**x, "start": round(x["start"], 2), "end": round(x["end"], 2)} for x in selection.sentences(out)], info.language
+    pipe, words = BatchedInferencePipeline(whisper_model(model)), []
+    for t0, audio, keep_end in chunks:
+        segs, info = pipe.transcribe(audio, word_timestamps=True, language=language or None,
+                                     batch_size=int(os.getenv("WHISPER_BATCH", "8")))
+        language = language or info.language
+        after = words[-1]["end"] if words else -1.0
+        for s in segs:  # generator: transcription happens as we iterate, so progress is real
+            words += longaudio.keep_words([{"start": round(t0 + w.start, 2), "end": round(t0 + w.end, 2), "word": w.word,
+                                            "probability": round(w.probability, 3)} for w in (s.words or [])],
+                                          keep_end, after)
+            t = t0 + s.end
+            ctx.progress(lo + (hi - lo) * min(1.0, t / max(duration, 1)),
+                         f"Transcribing… {int(t // 3600)}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
+                         if duration >= 3600 else f"Transcribing… {int(t // 60)}:{int(t % 60):02d}")
+    # Regroup into sentences so the transcript viewer can seek to a sentence and speech coverage
+    # (used for the gameplay fallback) excludes long silences.
+    return [{**x, "start": round(x["start"], 2), "end": round(x["end"], 2)}
+            for x in selection.sentences([{"words": words}])], language
 
 
 # ---------------------------------------------------------------- analyze
@@ -134,19 +169,16 @@ def analyze(job_id: int, ctx: Ctx):
         cached = None if (tr is None or params["retranscribe"]) else (tr.segments, tr.language)
     try:
         ctx.progress(0.02, "Extracting audio")
-        audio = decode_audio(src)
-        loud = loudness_per_second(audio)
-        impact = selection.impact_per_second(audio, SR)
+        loud, impact, fresh = scan_audio(src, duration, None if cached else model, params["language"], ctx, 0.05, 0.75)
         if cached:
             segments, language = cached
         else:
-            segments, language = transcribe(audio, model, params["language"], ctx, 0.05, 0.75)
+            segments, language = fresh
             with SessionLocal() as db:
                 db.execute(delete(Transcript).where(Transcript.project_id == p.id))
                 db.add(Transcript(project_id=p.id, language=language, model=model, segments=segments,
                                   text=" ".join(s["text"] for s in segments)))
                 db.commit()
-        del audio
 
         ctx.progress(0.78, "Finding the best moments")
         min_len, max_len = float(params["min_len"]), float(params["max_len"])
@@ -255,22 +287,24 @@ def _faces(src: Path, start: float, dur: float, w: int, h: int):
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     samples, dets, motion, prev, i = [], [], [], None, 0
     try:
-        while len(buf := proc.stdout.read(sw * sh)) == sw * sh:
-            f = np.frombuffer(buf, np.uint8).reshape(sh, sw)
-            cur = f[:gh * CELL, :gw * CELL].astype(np.int16)
-            motion.append(np.zeros((gh, gw), np.float16) if prev is None else
-                          np.abs(cur - prev).reshape(gh, CELL, gw, CELL).mean(axis=(1, 3)).astype(np.float16))
-            prev = cur
-            if i % DETECT_EVERY == 0:
-                t = i / MOTION_FPS
-                faces = det.detectMultiScale(f, scaleFactor=1.1, minNeighbors=6, minSize=(sh // 12, sh // 12))
-                dets.append((t, [(x / sw, y / sh, fw / sw, fh / sh) for x, y, fw, fh in faces]))
-                if len(faces):
-                    x, y, fw, fh = max(faces, key=lambda b: b[2] * b[3])
-                    samples.append((t, (x + fw / 2) / sw, fh / sh, (y + fh / 2) / sh))
-                else:
-                    samples.append((t, None, 0.0, None))
-            i += 1
+        with longaudio.Watchdog(proc, "Finding faces") as wd:
+            wd.arm(60 + 3 * dur)  # measured 0.05x realtime (45 s of 1080p in 2.2 s); without a limit a hung decode never ends
+            while len(buf := proc.stdout.read(sw * sh)) == sw * sh:
+                f = np.frombuffer(buf, np.uint8).reshape(sh, sw)
+                cur = f[:gh * CELL, :gw * CELL].astype(np.int16)
+                motion.append(np.zeros((gh, gw), np.float16) if prev is None else
+                              np.abs(cur - prev).reshape(gh, CELL, gw, CELL).mean(axis=(1, 3)).astype(np.float16))
+                prev = cur
+                if i % DETECT_EVERY == 0:
+                    t = i / MOTION_FPS
+                    faces = det.detectMultiScale(f, scaleFactor=1.1, minNeighbors=6, minSize=(sh // 12, sh // 12))
+                    dets.append((t, [(x / sw, y / sh, fw / sw, fh / sh) for x, y, fw, fh in faces]))
+                    if len(faces):
+                        x, y, fw, fh = max(faces, key=lambda b: b[2] * b[3])
+                        samples.append((t, (x + fw / 2) / sw, fh / sh, (y + fh / 2) / sh))
+                    else:
+                        samples.append((t, None, 0.0, None))
+                i += 1
     finally:
         proc.kill()
         proc.wait()
@@ -497,12 +531,15 @@ def _run_ffmpeg(args: list[str], dur: float, ctx: Ctx, cwd: Path, lo: float, hi:
     proc = subprocess.Popen([config.FFMPEG, "-v", "error", "-nostats", "-progress", "pipe:1", *args], cwd=cwd,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
-        for line in proc.stdout:
-            if line.startswith("out_time_us=") and line.strip() != "out_time_us=N/A":
-                done = int(line.split("=")[1]) / 1e6
-                ctx.progress(lo + (hi - lo) * min(1.0, done / dur), "Rendering")
-    except Cancelled:
+        with longaudio.Watchdog(proc, "Rendering") as wd:
+            wd.arm(120 + 10 * dur)  # measured ~0.36x realtime (45 s 9:16 clip in 16 s on 4 cores)
+            for line in proc.stdout:
+                if line.startswith("out_time_us=") and line.strip() != "out_time_us=N/A":
+                    done = int(line.split("=")[1]) / 1e6
+                    ctx.progress(lo + (hi - lo) * min(1.0, done / dur), "Rendering")
+    except BaseException:  # cancelled or timed out
         proc.kill()
+        proc.wait()
         raise
     err = proc.stderr.read()
     if proc.wait() != 0:
@@ -820,8 +857,8 @@ def _render(ctx, src, pid, cid, start, end, sw, sh, fps, st, segments, overrides
     finally:
         tmp.unlink(missing_ok=True)  # partial output from a failed/cancelled render
         (out_dir / f"{cid}.ass").unlink(missing_ok=True)
-    subprocess.run([config.FFMPEG, "-v", "error", "-y", "-ss", f"{min(1.0, new_dur / 2):.2f}", "-i", str(final),
-                    "-frames:v", "1", "-vf", "scale=360:-2", "-q:v", "3", str(out_dir / f"{cid}.jpg")], timeout=120)
+    longaudio.run([config.FFMPEG, "-v", "error", "-y", "-ss", f"{min(1.0, new_dur / 2):.2f}", "-i", str(final),
+                   "-frames:v", "1", "-vf", "scale=360:-2", "-q:v", "3", str(out_dir / f"{cid}.jpg")], 120, "Making the thumbnail")
     with SessionLocal() as db:
         c = db.get(Clip, cid)
         if c:
