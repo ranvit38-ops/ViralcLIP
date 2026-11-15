@@ -19,6 +19,7 @@ import webbrowser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+RUN_ENV = None  # set in main(): environment for setup commands (cache locations)
 BACKEND, FRONTEND = ROOT / "backend", ROOT / "frontend"
 WIN = os.name == "nt"
 VENV = BACKEND / ".venv"
@@ -85,12 +86,16 @@ def digest(*paths) -> str:
 
 
 def run(cmd, cwd, env=None):
-    r = subprocess.run(cmd, cwd=cwd, env=env)
+    r = subprocess.run(cmd, cwd=cwd, env=env or RUN_ENV)
     if r.returncode:
         die(f"Command failed: {' '.join(map(str, cmd))}")
 
 
 def setup_backend():
+    # A venv breaks when its folder is moved (e.g. C: -> D:). Detect that and rebuild it.
+    if VPY.exists() and subprocess.run([str(VPY), "-c", "import sys"], capture_output=True).returncode != 0:
+        say("Python environment was moved or is broken; recreating it...")
+        shutil.rmtree(VENV, ignore_errors=True)
     if not VPY.exists():
         say("Creating Python environment (first run only)...")
         run([sys.executable, "-m", "venv", str(VENV)], BACKEND)
@@ -144,7 +149,14 @@ def main():
     env.setdefault("APP_URL", f"http://localhost:{a.port}")
     # Relative paths in .env are relative to backend/ (where the API and workers run).
     env["VC_DATA_DIR"] = str((BACKEND / env.get("VC_DATA_DIR", "data")).resolve())
+    # Keep the speech models next to the app (same drive), not in the user's C: profile.
+    env.setdefault("HF_HOME", str(Path(env["VC_DATA_DIR"]) / "models"))
+    # Download caches too: everything stays on the drive ViralClip lives on.
+    env.setdefault("PIP_CACHE_DIR", str(Path(env["VC_DATA_DIR"]) / "cache" / "pip"))
+    env.setdefault("npm_config_cache", str(Path(env["VC_DATA_DIR"]) / "cache" / "npm"))
     env["PYTHONUNBUFFERED"] = "1"
+    global RUN_ENV
+    RUN_ENV = env
     setup_backend()
     setup_frontend(env, a.rebuild)
 
