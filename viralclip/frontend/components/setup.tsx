@@ -16,7 +16,7 @@ type Auto = {
   twitch_accounts: { id: number; display_name: string; status: string }[];
   youtube_accounts: Acc[]; tiktok_accounts: Acc[];
 };
-type Sys = SystemInfo & { research_configured?: boolean; research?: { configured?: boolean } | boolean };
+type Sys = SystemInfo & { research?: { available?: boolean; source?: "api_key" | "oauth" | "none" } };
 type Data = {
   sys?: Sys; twitch?: Cfg; youtube?: Cfg; tiktok?: Cfg; auto?: Auto;
   yt?: { published: number; scheduled: number }; tt?: { published: number; drafts_sent: number }; rendered?: unknown[];
@@ -50,8 +50,9 @@ function accountStep(accs: { status: string; name?: string }[] | undefined, noun
 function build(d: Data): Part[] {
   const { sys, auto } = d;
   const model = sys?.whisper_default ?? "small";
-  const research = sys == null ? undefined
-    : typeof sys.research === "boolean" ? sys.research : sys.research?.configured ?? sys.research_configured;
+  // Done only with a dedicated key: the OAuth fallback works but eats upload quota (20 searches/day max).
+  const research = sys?.research == null ? undefined : sys.research.source === "api_key";
+  const researchViaOauth = sys?.research?.source === "oauth";
   const pos = (n?: number) => n != null && n > 0;
   return [
     { key: "start", title: "ViralClip running and account created", guide: "Part 1", steps: [
@@ -88,7 +89,9 @@ function build(d: Data): Part[] {
         ? { state: "info", text: "Coming soon: trend research isn't in this version yet." }
         : research
           ? { state: "ok", text: "Research key is set, so titles use what's trending." }
-          : { state: "todo", text: "No research key configured.",
+          : { state: "todo", text: researchViaOauth
+                ? "Using your upload quota for research (max 20 searches/day). A separate key gives ~90/day without touching uploads."
+                : "No research key configured.",
               next: <>Create an API key in <A href="https://console.cloud.google.com/apis/credentials">Google Cloud → Credentials</A>, add <Env>YOUTUBE_RESEARCH_API_KEY</Env> to <Env>viralclip\.env</Env> and restart <Env>start.bat</Env>.</> },
     ] },
     { key: "test", title: "Test once before automating", guide: "Part 6", steps: [
