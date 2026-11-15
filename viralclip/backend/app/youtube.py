@@ -1041,7 +1041,8 @@ def sync_published(db: Session) -> None:
     db.commit()
 
 
-def tick() -> None:
+def tick() -> int:
     with SessionLocal() as db:
-        autopublish_tick(db)
+        n = autopublish_tick(db)
         sync_published(db)
+        return n

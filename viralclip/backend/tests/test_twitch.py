@@ -64,6 +64,8 @@ def tw(monkeypatch):
     monkeypatch.setattr(config, "TWITCH_CLIENT_ID", "tcid")
     monkeypatch.setattr(config, "TWITCH_CLIENT_SECRET", "tsecret")
     monkeypatch.setattr(twitch, "http", httpx.Client(transport=httpx.MockTransport(fake)))
+    # Plenty of free disk regardless of the machine running the tests (a 1 h VOD reserves ~4 GB).
+    monkeypatch.setattr(automation.shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(10**13, 0, 10**13))
     automation._last_poll.clear()
     return fake
 

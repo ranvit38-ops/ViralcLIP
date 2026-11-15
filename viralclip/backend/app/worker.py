@@ -7,17 +7,22 @@ goes stale; after MAX_ATTEMPTS it is marked failed instead of looping forever.
 """
 import logging
 import os
+import threading
 import time
+from contextlib import contextmanager
 from datetime import timedelta
 
 from sqlalchemy import or_, select, update
 
+from . import config
 from .db import SessionLocal, init_db
 from .models import Job, now
 
 log = logging.getLogger("viralclip.worker")
-STALE_AFTER = timedelta(minutes=10)
+STALE_AFTER = timedelta(minutes=3)  # run_job heartbeats every BEAT_EVERY s, so only a dead worker goes stale
+BEAT_EVERY = 30
 MAX_ATTEMPTS = 3
+TICK_LOCK_STALE = 600  # seconds; a lock older than this was left by a killed process
 
 
 class Cancelled(Exception):
@@ -88,6 +93,8 @@ def run_job(jid: int, table=None):
     with SessionLocal() as db:
         job_type = db.get(Job, jid).job_type
     status, error = "done", None
+    stop = threading.Event()
+    threading.Thread(target=_beat, args=(jid, stop), daemon=True).start()
     try:
         table[job_type](jid, Ctx(jid))
     except Cancelled:
@@ -97,6 +104,8 @@ def run_job(jid: int, table=None):
     except Exception:
         log.exception("Job %s (%s) crashed", jid, job_type)
         status, error = "failed", f"Unexpected error during {job_type}. See worker logs."
+    finally:
+        stop.set()
     with SessionLocal() as db:
         j = db.get(Job, jid)
         if j is None:  # project deleted mid-job
@@ -111,18 +120,67 @@ def run_job(jid: int, table=None):
         db.commit()
 
 
+def _beat(jid: int, stop: threading.Event):
+    """Keep a running job's heartbeat fresh even through long silent steps (model download, audio decode,
+    LLM calls), so requeue_stale only ever picks up jobs whose worker is really gone."""
+    while not stop.wait(BEAT_EVERY):
+        try:
+            with SessionLocal() as db:
+                db.execute(update(Job).where(Job.id == jid, Job.status.in_(("running", "cancel_requested")))
+                           .values(heartbeat_at=now()))
+                db.commit()
+        except Exception:
+            log.warning("heartbeat for job %s failed", jid, exc_info=True)
+
+
+@contextmanager
+def tick_lock(wait: float = 0):
+    """Only one process at a time runs the periodic tick (every worker calls it, and so does the API's
+    "check now"). Two concurrent ticks would both see "no job yet" and enqueue duplicates. A lockfile in
+    DATA_DIR works for SQLite and Postgres alike (every process shares DATA_DIR) and on Windows."""
+    f = config.DATA_DIR / "automation.lock"
+    deadline = time.time() + wait
+    while True:
+        try:
+            os.close(os.open(f, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            break
+        except FileExistsError:
+            try:
+                if time.time() - f.stat().st_mtime > TICK_LOCK_STALE:
+                    f.unlink(missing_ok=True)  # left behind by a killed process
+                    continue
+            except FileNotFoundError:
+                continue
+            if time.time() >= deadline:
+                yield False
+                return
+            time.sleep(0.5)
+    try:
+        yield True
+    finally:
+        f.unlink(missing_ok=True)
+
+
 def periodic():
-    """Once a minute: YouTube auto-publish rules and scheduled-video status sync."""
-    try:
-        from . import youtube
-        youtube.tick()
-    except Exception:
-        log.exception("periodic task failed")
-    try:
-        from . import automation
-        automation.tick()  # import → analyze → approve → render; youtube.tick() then publishes
-    except Exception:
-        log.exception("automation tick failed")
+    """Once a minute: automation (import → analyze → approve → render), YouTube auto-publish rules and
+    scheduled-video status sync. Skipped when another process is already running it."""
+    with tick_lock() as mine:
+        if not mine:
+            return
+        try:
+            from . import youtube
+            n = youtube.tick()
+            if n:
+                log.info("auto-publish: scheduled %s upload(s)", n)
+        except Exception:
+            log.exception("periodic task failed")
+        try:
+            from . import automation
+            n = automation.tick()  # youtube.tick() then publishes what this rendered, next minute
+            if n:
+                log.info("automation: %s action(s), see the activity log", n)
+        except Exception:
+            log.exception("automation tick failed")
 
 
 def run_once() -> bool:
