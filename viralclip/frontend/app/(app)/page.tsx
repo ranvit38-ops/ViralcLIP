@@ -7,6 +7,7 @@ import { api, fmtDate, type Job, type Project } from "@/lib/api";
 import { Card, Empty, LinkButton, Loading, PageHeader, Progress, StatusBadge } from "@/components/ui";
 import { JOB_LABEL } from "@/components/project-panels";
 import { YouTubeStats } from "@/components/youtube-stats";
+import { TikTokStats } from "@/components/tiktok";
 
 type Dash = {
   projects: number; clips: number; clips_awaiting_review: number; active_jobs: number; failed_jobs: number;
@@ -46,6 +47,7 @@ export default function Dashboard() {
         <Stat label="Failed jobs" value={d.failed_jobs} icon={<AlertTriangle size={14} />} />
       </div>
       <YouTubeStats />
+      <TikTokStats />
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
         <section>

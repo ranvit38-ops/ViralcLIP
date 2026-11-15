@@ -6,10 +6,43 @@ import { api, fmtDate } from "@/lib/api";
 import { whenLabel, type YtUpload } from "@/lib/youtube";
 import { EditTime } from "@/components/schedule";
 import { Button, ErrorNote, Progress, StatusBadge } from "@/components/ui";
+import { PlatformBadge, TikTokPostRow } from "@/components/tiktok";
+import type { TtPost } from "@/lib/tiktok";
 
-export const GROUPS = ["Uploading", "Pending", "Failed", "Scheduled", "Published", "Uploaded", "Cancelled"] as const;
+export function QueueRow({ item, onChange }: { item: QueueItem; onChange: () => void }) {
+  return isTikTok(item) ? <TikTokPostRow p={item} onChange={onChange} /> : <UploadRow u={item} onChange={onChange} />;
+}
 
-export function groupOf(u: YtUpload): (typeof GROUPS)[number] {
+export const GROUPS = ["Uploading", "Pending", "Failed", "Scheduled", "Published", "Uploaded", "Drafts sent", "Cancelled"] as const;
+
+/** A YouTube upload or a TikTok post; the queue and calendar show both. */
+export type QueueItem = YtUpload | TtPost;
+export const isTikTok = (x: QueueItem): x is TtPost => (x as TtPost).platform === "tiktok";
+export const itemKey = (x: QueueItem) => `${isTikTok(x) ? "tt" : "yt"}-${x.id}`;
+export const itemWhen = (x: QueueItem) => isTikTok(x) ? x.publish_at ?? x.posted_at ?? x.created_at : x.publish_at ?? x.uploaded_at ?? x.created_at;
+export const itemBusy = (x: QueueItem) => isTikTok(x) ? ["queued", "uploading", "processing"].includes(x.status) : ["uploading", "queued"].includes(x.upload_status);
+
+/** Both platforms' items. TikTok is optional: if its endpoints fail (not configured / older backend), YouTube still shows. */
+export async function loadQueue(): Promise<QueueItem[]> {
+  const [yt, tt] = await Promise.all([
+    api<YtUpload[]>("/api/youtube/uploads"),
+    api<Omit<TtPost, "platform">[]>("/api/tiktok/posts").catch(() => []),
+  ]);
+  return [...yt, ...tt.map((p) => ({ ...p, platform: "tiktok" as const }))];
+}
+
+export function groupOf(u: QueueItem): (typeof GROUPS)[number] {
+  if (isTikTok(u)) {
+    switch (u.status) {
+      case "uploading": case "processing": return "Uploading";
+      case "queued": return "Pending";
+      case "scheduled": return "Scheduled";
+      case "published": return "Published";
+      case "draft_sent": return "Drafts sent";
+      case "cancelled": return "Cancelled";
+      default: return "Failed";
+    }
+  }
   switch (u.upload_status) {
     case "uploading": return "Uploading";
     case "queued": case "paused": case "quota_exceeded": return "Pending";
@@ -40,6 +73,7 @@ export function UploadRow({ u, onChange }: { u: YtUpload; onChange: () => void }
         <div className="min-w-0 flex-1 space-y-1">
           <p className="truncate text-sm font-medium">{u.clip_title || `Clip ${u.clip_id}`}</p>
           <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+            <PlatformBadge tiktok={false} />
             <StatusBadge status={s} />
             {u.schedule_status !== "none" && <StatusBadge status={u.schedule_status === "failed" ? "schedule_failed" : u.schedule_status} />}
             <span>{u.publish_at && u.schedule_status !== "failed" && u.schedule_status !== "published" ? "private until publish time" : u.privacy}</span> · <span>{u.channel_title}</span>
