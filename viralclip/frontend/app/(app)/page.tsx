@@ -9,6 +9,7 @@ import { JOB_LABEL } from "@/components/project-panels";
 import { YouTubeStats } from "@/components/youtube-stats";
 import { TikTokStats } from "@/components/tiktok";
 import { SetupBanner } from "@/components/setup";
+import { LinkImport } from "@/components/link-import";
 
 type Dash = {
   projects: number; clips: number; clips_awaiting_review: number; active_jobs: number; failed_jobs: number;
@@ -48,6 +49,10 @@ export default function Dashboard() {
         <Stat label="Processing jobs" value={d.active_jobs} icon={<Loader2 size={14} />} />
         <Stat label="Failed jobs" value={d.failed_jobs} icon={<AlertTriangle size={14} />} />
       </div>
+      <Card className="mt-3 p-4">
+        <h2 className="mb-2 text-sm font-medium">Quick import from a link</h2>
+        <LinkImport />
+      </Card>
       <YouTubeStats />
       <TikTokStats />
 
