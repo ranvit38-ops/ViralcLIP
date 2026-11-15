@@ -124,6 +124,18 @@ def _import_busy(db: Session, user_id: int) -> bool:
                                                         Job.status.in_(ACTIVE)).limit(1)) is not None
 
 
+def _try_import(db: Session, user: User, create, ext_id: str, label: str) -> Project | None:
+    """One video that can't be imported (e.g. too big for the free disk) is reported and skipped;
+    it must not block every newer video behind it."""
+    try:
+        return create(db, user, ext_id, automated=True)
+    except HTTPException as e:
+        db.rollback()
+        event(db, user.id, "error", f"Skipped {label}: {e.detail}")
+        db.commit()
+        return None
+
+
 def poll_twitch(db: Session, user: User, s: dict, since: datetime, force: bool) -> None:
     from . import twitch
     if _import_busy(db, user.id):
@@ -143,7 +155,9 @@ def poll_twitch(db: Session, user: User, s: dict, since: datetime, force: bool) 
                 continue  # still streaming: the VOD is incomplete; pick it up after the stream ends
             if twitch.parse_duration(v.get("duration", "")) < s["min_source_minutes"] * 60:
                 continue
-            p = twitch.create_import(db, user, v["id"], automated=True)
+            p = _try_import(db, user, twitch.create_import, v["id"], f"Twitch VOD \"{v.get('title', v['id'])}\"")
+            if p is None:
+                continue
             event(db, user.id, "import", f"Importing Twitch VOD \"{v.get('title', v['id'])}\"", p.id)
             db.commit()
             _last_poll.pop(("twitch", aid), None)  # more may be waiting: look again once this download is done
@@ -184,7 +198,9 @@ def poll_youtube(db: Session, user: User, s: dict, since: datetime, force: bool)
                 continue
             if _yt_duration(v["contentDetails"].get("duration", "")) < s["min_source_minutes"] * 60:
                 continue
-            p = youtube.create_import(db, user, v["id"], automated=True)
+            p = _try_import(db, user, youtube.create_import, v["id"], f"YouTube video \"{v['snippet'].get('title', v['id'])}\"")
+            if p is None:
+                continue
             event(db, user.id, "import", f"Importing YouTube video \"{v['snippet'].get('title', v['id'])}\"", p.id)
             db.commit()
             _last_poll.pop(("youtube", aid), None)

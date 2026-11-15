@@ -5,8 +5,10 @@ and render handlers (the real ones are covered by test_pipeline). Everything els
 worker.periodic() (tick lock, youtube + automation ticks) and worker.run_job() on claimed jobs.
 """
 import os
+import shutil
 import threading
 import time
+from datetime import timedelta
 from collections import Counter
 from types import SimpleNamespace
 
@@ -282,3 +284,15 @@ def test_heartbeat_keeps_long_silent_jobs_alive_and_dead_ones_recover(stack, mon
     assert len(rows(Job, c.uid, Job.job_type == "analyze")) == 1
     with SessionLocal() as db:
         assert len(db.get(Project, rows(Job, c.uid)[0].project_id).clips) == 4
+
+
+def test_a_vod_too_big_for_the_disk_is_logged_and_does_not_block_newer_ones(stack, monkeypatch):
+    s, c = stack, stack.c
+    enable(c, twitch=[c.taid])
+    monkeypatch.setattr(automation.shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(10**12, 0, 9 * 1024**3))
+    s.tw.vod("95000001", hours=10, title="Marathon", created=now() - timedelta(hours=2))  # ~40 GB: can't fit
+    s.tw.vod("95000002", hours=1, title="Normal")
+    minute(s)
+    assert [p.name for p in rows(Project, c.uid)] == ["Normal"]
+    (err,) = [e for e in rows(AutomationEvent, c.uid) if e.kind == "error"]
+    assert "Marathon" in err.message and "disk space" in err.message
