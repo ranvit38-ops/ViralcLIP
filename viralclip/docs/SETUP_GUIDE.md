@@ -3,7 +3,7 @@
 Do the parts in order. Total time is about 1–1.5 hours, mostly clicking through the Google and TikTok websites.
 The end result: **Twitch stream → clips → YouTube + TikTok, automatically.**
 
-The app runs on **your computer**. Automation only runs while its window is open.
+The app runs on **your computer**. Run `autostart.ps1` once (Part 7) and it keeps running in the background, with no window needed, whenever the PC is on.
 
 ---
 
@@ -129,7 +129,15 @@ If either step fails, screenshot the error and send it to Claude.
    - Turn **Automation on**.
 2. **YouTube Studio**: enable an **auto-publish rule**, e.g. 2 clips a day at 18:00 in your time zone. The limit is about 6 uploads a day per Google project.
 3. **TikTok page**: enable an **auto-publish rule** (draft mode until you're audited).
-4. Leave the ViralClip window open. New streams are picked up within 30 minutes of ending.
+4. **Make it run in the background**, so you never need the window open. In PowerShell, in the `viralclip` folder:
+   ```
+   powershell -ExecutionPolicy Bypass -File .\autostart.ps1
+   ```
+   From now on ViralClip starts hidden whenever you log into Windows, restarts any part that crashes, and keeps automating. Open http://localhost:3000 whenever you want to look; `start.bat` just opens it.
+   - Your PC must be **on and awake**. To stop it sleeping while plugged in: `powercfg /change standby-timeout-ac 0`
+   - Turn it off again with `.\autostart.ps1 -Remove`.
+
+   New streams are picked up within 30 minutes of ending.
 
 **The automated flow:** stream ends → VOD imported → transcribed (~12 min per 2 h on a 4-core CPU) → best clips picked → (approved) → rendered with captions/split-screen/jump cuts (each clip takes about half its own length) → scheduled on YouTube and TikTok.
 

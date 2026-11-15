@@ -45,7 +45,7 @@ No subscriptions, credits or watermarks. Everything runs on your machine.
 - Any system: `python run.py`
 
 The first run sets everything up (5–15 min). Later runs start in seconds. Your browser opens at http://localhost:3000.
-Keep the window open: automation (Twitch/YouTube watching, auto-publish) only runs while it's open. Ctrl+C stops everything.
+To automate without keeping a window open, run `autostart.ps1` once (Windows). ViralClip then runs hidden in the background from every login, and restarts crashed parts. Stop it with `autostart.ps1 -Remove` or `python run.py --stop`. Otherwise Ctrl+C in the window stops everything.
 
 Your keys go in `viralclip/.env`, which the first run creates from `.env.example`. Restart after editing it.
 Data and logs are in `backend/data/`.

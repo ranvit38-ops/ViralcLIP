@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent
 RUN_ENV = None  # set in main(): environment for setup commands (cache locations)
 BACKEND, FRONTEND = ROOT / "backend", ROOT / "frontend"
 WIN = os.name == "nt"
+NO_WINDOW = 0x08000000 if WIN else 0  # CREATE_NO_WINDOW: no console popping up for each part
 VENV = BACKEND / ".venv"
 VPY = VENV / ("Scripts/python.exe" if WIN else "bin/python")
 
@@ -38,7 +39,7 @@ def say(msg):
 
 def die(msg):
     print(f"\n✖ {msg}\n", flush=True)
-    if WIN:
+    if WIN and sys.stdin and sys.stdin.isatty():
         input("Press Enter to close...")
     sys.exit(1)
 
@@ -86,7 +87,10 @@ def digest(*paths) -> str:
 
 
 def run(cmd, cwd, env=None):
-    r = subprocess.run(cmd, cwd=cwd, env=env or RUN_ENV)
+    quiet = {}
+    if not (sys.stdout and sys.stdout.isatty()):  # background/autostart: log output, no console windows
+        quiet = {"stdout": sys.stdout, "stderr": subprocess.STDOUT, "creationflags": NO_WINDOW}
+    r = subprocess.run(cmd, cwd=cwd, env=env or RUN_ENV, **quiet)
     if r.returncode:
         die(f"Command failed: {' '.join(map(str, cmd))}")
 
@@ -141,7 +145,26 @@ def main():
     ap.add_argument("--workers", type=int, default=2, help="background workers (default 2)")
     ap.add_argument("--rebuild", action="store_true", help="force reinstall/rebuild of the web app")
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--background", action="store_true", help="no window; restart crashed parts (used by autostart)")
+    ap.add_argument("--stop", action="store_true", help="stop a ViralClip running in the background")
     a = ap.parse_args()
+    pidfile = BACKEND / "data" / "launcher.pid"
+    if sys.stdout is None:  # started with pythonw (no console): log instead of printing
+        (BACKEND / "data").mkdir(parents=True, exist_ok=True)
+        sys.stdout = sys.stderr = open(BACKEND / "data" / "launcher.log", "a", encoding="utf-8", buffering=1)
+    if a.stop:
+        return stop_background(pidfile)
+    if not WIN:  # treat "terminate" like Ctrl+C so every part is stopped cleanly
+        signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+    url = f"http://localhost:{a.port}"
+    try:  # already running (e.g. in the background)? Just open it.
+        urllib.request.urlopen(url + "/api/health", timeout=2)
+        say(f"ViralClip is already running at {url}")
+        if not a.no_browser:
+            webbrowser.open(url)
+        return
+    except OSError:
+        pass
 
     check_tools()
     env = load_env()
@@ -162,12 +185,16 @@ def main():
 
     logs = Path(env["VC_DATA_DIR"]) / "logs"
     logs.mkdir(parents=True, exist_ok=True)
-    procs = []
+    procs, specs = [], {}
 
     def start(name, cmd, cwd):
         f = open(logs / f"{name}.log", "a", encoding="utf-8")
-        flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if WIN else {"start_new_session": True}
-        procs.append(subprocess.Popen(cmd, cwd=cwd, env=env, stdout=f, stderr=subprocess.STDOUT, **flags))
+        specs[name] = (cmd, cwd)
+        flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | NO_WINDOW} if WIN else {"start_new_session": True}
+        p = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=f, stderr=subprocess.STDOUT, **flags)
+        p.vc_name = name
+        procs.append(p)
+        return p
 
     say("Starting ViralClip...")
     # The API creates/upgrades the database; start it first so workers don't race it.
@@ -184,14 +211,27 @@ def main():
         stop(procs)
         die(f"The web app didn't start. See {logs / 'web.log'}")
 
-    print(f"\n  ViralClip is running:  {url}\n  Logs: {logs}\n  Keep this window open (automation only runs while it's open). Ctrl+C to stop.\n", flush=True)
+    pidfile.write_text(str(os.getpid()))
+    print(f"\n  ViralClip is running:  {url}\n  Logs: {logs}\n"
+          + ("  Running in the background.\n" if a.background else
+             "  Keep this window open, or run autostart.ps1 once so it runs in the background. Ctrl+C to stop.\n"),
+          flush=True)
     if not a.no_browser:
         webbrowser.open(url)
+    restarts: dict[str, list[float]] = {}
     try:
         while True:
-            for p in procs:
-                if p.poll() is not None:
-                    raise RuntimeError(f"A ViralClip process stopped unexpectedly (exit {p.returncode}). See {logs}.")
+            for p in list(procs):
+                if p.poll() is None:
+                    continue
+                # A crashed part is restarted (the job queue makes this safe); give up if it keeps crashing.
+                recent = [t for t in restarts.get(p.vc_name, []) if t > time.time() - 600] + [time.time()]
+                restarts[p.vc_name] = recent
+                if len(recent) > 5:
+                    raise RuntimeError(f"{p.vc_name} keeps crashing (exit {p.returncode}). See {logs / (p.vc_name + '.log')}.")
+                print(f"  {p.vc_name} stopped (exit {p.returncode}); restarting...", flush=True)
+                procs.remove(p)
+                start(p.vc_name, *specs[p.vc_name])
             time.sleep(2)
     except KeyboardInterrupt:
         say("Stopping...")
@@ -199,14 +239,31 @@ def main():
         print(f"\n✖ {e}", flush=True)
     finally:
         stop(procs)
+        pidfile.unlink(missing_ok=True)
+
+
+def stop_background(pidfile: Path):
+    if not pidfile.exists():
+        say("ViralClip isn't running in the background.")
+        return
+    pid = int(pidfile.read_text().strip())
+    if WIN:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True)
+    else:
+        try:
+            os.kill(pid, signal.SIGTERM)  # launcher turns this into a clean shutdown of its children
+        except ProcessLookupError:
+            pass
+    pidfile.unlink(missing_ok=True)
+    say("ViralClip stopped.")
 
 
 def stop(procs):
     for p in procs:
         if p.poll() is None:
             try:
-                if WIN:
-                    p.send_signal(signal.CTRL_BREAK_EVENT)
+                if WIN:  # kill the whole tree: e.g. `next start` spawns a next-server child that holds the port
+                    subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
                 else:
                     os.killpg(p.pid, signal.SIGTERM)
             except OSError:
