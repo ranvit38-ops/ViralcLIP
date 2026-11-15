@@ -14,7 +14,7 @@ ViralClip posts clips to TikTok through TikTok's official **Login Kit v2** (to c
    - **Login Kit** (Web platform).
    - **Content Posting API**. Turn on **Direct Post** if you want ViralClip to publish straight to your profile.
      Without it, only draft mode (videos sent to your TikTok inbox) works.
-4. Under **Scopes**, add `user.info.basic`, `video.upload` and `video.publish`.
+4. Under **Scopes**, add `user.info.basic`, `video.upload`, `video.publish` and `video.list` (link import of your own videos, and view counts).
 5. Under Login Kit, add the **Redirect URI** (see section 2), then copy the **Client key** and **Client secret**.
 
 ### Sandbox and test users

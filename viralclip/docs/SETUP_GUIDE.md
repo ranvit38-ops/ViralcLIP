@@ -104,7 +104,7 @@ ViralClip can look up recent Shorts on a similar topic that got a lot of views (
 1. Go to <https://developers.tiktok.com> → log in → **Manage apps → Connect an app**.
 2. Fill in the app details. TikTok wants a terms-of-service URL and a privacy-policy URL; any page you control works, even a public GitHub page.
 3. **Products**: add **Login Kit** (Web) and **Content Posting API** (turn on **Direct Post**).
-4. **Scopes**: `user.info.basic`, `video.upload`, `video.publish`.
+4. **Scopes**: `user.info.basic`, `video.upload`, `video.publish`, `video.list`. `video.list` lets ViralClip check that a pasted TikTok link is one of your own videos, and read the view counts of what it posted. If you connected TikTok before this scope was added, connect it again.
 5. **Sandbox**: create one and add **your TikTok account** as a test/target user.
 6. **Redirect URI.** First try `http://localhost:3000/api/tiktok/callback`.
    - **If TikTok refuses it** (it probably requires `https://`), use a free tunnel:
@@ -121,6 +121,17 @@ ViralClip can look up recent Shorts on a similar topic that got a lot of views (
 
 **Know this:** until TikTok **audits** your app, clips go to your **TikTok inbox as drafts**. You get a notification, open TikTok, paste the caption (ViralClip has a *Copy caption* button) and tap Post.
 To post publicly by itself, apply for the audit in the developer portal (Content Posting API → *Apply for audit*), then set `TIKTOK_AUDITED=true`.
+
+---
+
+### Import from a link
+
+Paste any link to one of **your own** videos and ViralClip downloads it:
+- a Twitch VOD (`twitch.tv/videos/…`)
+- a YouTube video (`youtube.com/watch?v=…`, `youtu.be/…`, `/shorts/…`, `/live/…`)
+- a TikTok post (`tiktok.com/@you/video/…` or a `vm.tiktok.com/…` share link)
+
+It checks the video belongs to an account you connected; anyone else's video is refused. Imported videos get the automation treatment (analyze, auto-approve, render) only while automation is switched on.
 
 ---
 

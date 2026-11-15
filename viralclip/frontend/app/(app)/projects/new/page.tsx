@@ -1,11 +1,12 @@
 "use client";
 
-import { UploadCloud } from "lucide-react";
+import { Link2, UploadCloud } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, fmtBytes, type Project } from "@/lib/api";
 import { useUpload } from "@/lib/upload";
 import { Button, Card, ErrorNote, Field, Input, PageHeader, Progress } from "@/components/ui";
+import { LinkImport } from "@/components/link-import";
 
 const EXTS = [".mp4", ".mov", ".webm", ".m4v", ".mkv"];
 
@@ -17,6 +18,7 @@ export default function NewProject() {
   const [pid, setPid] = useState<number | null>(null);
   const up = useUpload();
   const [drag, setDrag] = useState(false);
+  const [tab, setTab] = useState<"file" | "link">("file");
 
   function pick(f?: File | null) {
     setError("");
@@ -47,9 +49,25 @@ export default function NewProject() {
 
   return (
     <>
-      <PageHeader title="Create project" sub="Upload a long-form video you own or have the rights to use." />
+      <PageHeader title="Create project" sub="Upload a long-form video you own or have the rights to use, or import one from your connected channels." />
       <Card className="max-w-2xl p-5">
-        <form onSubmit={submit} className="space-y-5">
+        <div role="tablist" aria-label="Video source" className="mb-5 grid grid-cols-2 gap-1 rounded-md border border-line bg-bg p-1 sm:inline-grid">
+          {([["file", "Upload a file", UploadCloud], ["link", "Paste a link", Link2]] as const).map(([k, label, I]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} disabled={up.busy}
+              className={`inline-flex h-8 items-center justify-center gap-2 rounded px-3 text-sm font-medium transition disabled:opacity-50 ${tab === k ? "bg-panel-2 text-fg ring-1 ring-line" : "text-muted hover:text-fg"}`}>
+              <I size={15} /> {label}
+            </button>
+          ))}
+        </div>
+        {tab === "link" ? (
+          <div role="tabpanel" className="space-y-3">
+            <p className="text-sm text-muted">
+              Paste a link to a Twitch VOD, YouTube video or TikTok from one of <span className="text-fg">your connected channels</span>. Videos from other channels are refused.
+            </p>
+            <LinkImport autoFocus />
+          </div>
+        ) : (
+        <form role="tabpanel" onSubmit={submit} className="space-y-5">
           <label
             onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
             onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files[0]); }}
@@ -81,6 +99,7 @@ export default function NewProject() {
             {up.busy && <Button type="button" variant="ghost" onClick={cancel}>Cancel upload</Button>}
           </div>
         </form>
+        )}
       </Card>
     </>
   );

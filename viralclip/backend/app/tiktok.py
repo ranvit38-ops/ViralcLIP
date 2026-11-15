@@ -14,7 +14,7 @@ import logging
 import re
 import secrets
 from datetime import datetime, time, timedelta, timezone
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
@@ -39,7 +39,10 @@ AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/"
 TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 REVOKE_URL = "https://open.tiktokapis.com/v2/oauth/revoke/"
 API = "https://open.tiktokapis.com/v2"
-SCOPES = "user.info.basic,video.publish,video.upload"
+# video.list: read your own videos, to verify link imports are yours and to read view counts of what we posted.
+SCOPES = "user.info.basic,video.publish,video.upload,video.list"
+IMPORT_SCOPE = "video.list"
+RECONNECT_FOR_IMPORT = "Reconnect TikTok to allow importing your videos."
 PRIVACY_LEVELS = ("PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "SELF_ONLY")
 MODES = ("direct", "draft")
 MAX_SINGLE_CHUNK = 64 * 1024 * 1024  # a file up to 64 MB goes up as one chunk
@@ -291,6 +294,7 @@ def callback(code: str | None = None, state: str | None = None, error: str | Non
         old_refresh = decrypt_tokens(acc.encrypted_tokens).get("refresh_token") if acc.encrypted_tokens else None
     acc.display_name = (info.get("display_name") or acc.display_name or "TikTok account")[:200]
     acc.avatar_url = info.get("avatar_url") or acc.avatar_url
+    acc.scopes = ",".join(sorted(granted))
     _store(acc, tok, old_refresh)
     db.commit()
     return RedirectResponse("/tiktok?connected=1", 303)
@@ -720,6 +724,9 @@ def _poll(db: Session, job: Job, p: TikTokPost):
     st = d.get("status")
     if st == "PUBLISH_COMPLETE":
         p.status, p.posted_at, p.error = "published", now(), None
+        # UNVERIFIED: TikTok's docs spell this field "publicaly_available_post_id" (a list of ids).
+        ids = d.get("publicaly_available_post_id") or d.get("publicly_available_post_id") or []
+        p.tiktok_video_id = str(ids[0])[:32] if ids else None
         db.commit()
     elif st == "SEND_TO_USER_INBOX":
         # Draft mode's final state: the video waits in the user's TikTok inbox to be finished in the app.
@@ -739,7 +746,120 @@ def acc_of(db: Session, p: TikTokPost) -> TikTokAccount:
     return db.get(TikTokAccount, p.account_id)
 
 
-JOB_HANDLERS = {"tiktok_post": run_post}
+def _run_import(job_id: int, ctx) -> None:
+    from .youtube import run_import
+    run_import(job_id, ctx)
+
+
+JOB_HANDLERS = {"tiktok_post": run_post, "tiktok_import": _run_import}
+
+
+# ---------- link import (own videos only) + view counts ----------
+
+VIDEO_PATH = re.compile(r"^/@([\w.-]+)/video/(\d{8,25})/?$")
+SHORT_CODE = re.compile(r"^[A-Za-z0-9]{5,20}$")
+LIST_PAGES = 10  # x 20 per page: the newest ~200 posts of each account are checked
+
+
+def parse_video_url(url: str) -> tuple[str, str, str | None] | None:
+    """("video", user, id) for tiktok.com/@user/video/<id>; ("short", short_url, None) for vm.tiktok.com/<code>
+    or tiktok.com/t/<code>, which need resolve_short(); None when it isn't a TikTok video link."""
+    url = url.strip()
+    p = urlparse(url if "://" in url else "https://" + url)
+    host = (p.hostname or "").lower().removeprefix("www.").removeprefix("m.")
+    parts = p.path.strip("/").split("/")
+    if host in ("vm.tiktok.com", "vt.tiktok.com") and len(parts) == 1 and SHORT_CODE.match(parts[0]):
+        return "short", f"https://{host}/{parts[0]}/", None
+    if host != "tiktok.com":
+        return None
+    if len(parts) == 2 and parts[0] == "t" and SHORT_CODE.match(parts[1]):
+        return "short", f"https://www.tiktok.com/t/{parts[1]}/", None
+    m = VIDEO_PATH.match(p.path)
+    return ("video", m[1], m[2]) if m else None
+
+
+def resolve_short(short_url: str) -> tuple[str, str] | None:
+    """(user, id) behind a short link: follows ONE redirect, 5 s timeout. short_url comes from parse_video_url
+    (fixed TikTok host + validated code), never straight from the user."""
+    try:
+        r = http.get(short_url, follow_redirects=False, timeout=5)
+    except httpx.HTTPError:
+        return None
+    got = parse_video_url(r.headers.get("location", "")) if r.is_redirect else None
+    return (got[1], got[2]) if got and got[0] == "video" else None
+
+
+def has_list_scope(acc: TikTokAccount) -> bool:
+    return IMPORT_SCOPE in re.split(r"[,\s]+", acc.scopes or "")
+
+
+def find_own_video(db: Session, acc: TikTokAccount, vid: str) -> dict | None:
+    """Page through the account's own posts (video/list) looking for vid."""
+    cursor = None
+    for _ in range(LIST_PAGES):
+        body = {"max_count": 20, **({"cursor": cursor} if cursor else {})}
+        d = _check(api(db, acc, "/video/list/?fields=id,title,duration,create_time", body))
+        for v in d.get("videos") or []:
+            if str(v.get("id")) == vid:
+                return v
+        cursor = d.get("cursor")
+        if not d.get("has_more") or not cursor:
+            break
+    return None
+
+
+def create_import(db: Session, user: User, user_name: str, vid: str, automated: bool = False) -> Project:
+    """Verify the video is one of the connected accounts' own posts (video.list), then queue its download."""
+    from .automation import start_import
+    accounts = list(db.scalars(select(TikTokAccount).where(TikTokAccount.user_id == user.id, TikTokAccount.status == "ok")))
+    if not accounts:
+        raise HTTPException(409, "Connect the TikTok account that owns this video first.")
+    scoped = [a for a in accounts if has_list_scope(a)]
+    for acc in scoped:
+        try:
+            v = find_own_video(db, acc, vid)
+        except AuthRequired:  # expired, or video.list withdrawn in TikTok's settings
+            raise HTTPException(409, RECONNECT_FOR_IMPORT)
+        except (Transient, RateLimited, UserError) as e:
+            raise HTTPException(502, f"TikTok didn't answer the ownership check: {e}")
+        if v:
+            return start_import(db, user.id, "tiktok", vid, acc.id, v.get("title") or f"TikTok {vid}", "tiktok_import",
+                                {"video_id": vid, "url": f"https://www.tiktok.com/@{user_name}/video/{vid}", "source": "TikTok"},
+                                est_bytes=0, automated=automated)
+    if len(scoped) < len(accounts):  # it may be on an account that hasn't granted video.list
+        raise HTTPException(409, RECONNECT_FOR_IMPORT)
+    raise HTTPException(403, "This TikTok video isn't among your connected accounts' videos. Import only works for "
+                             "your own videos; connect the account that posted it first.")
+
+
+def sync_stats(db: Session) -> int:
+    """View/like counts of posts we published, at most once per 24 h per account; skipped without video.list.
+    Runs from the worker's periodic tick (under tick_lock). Returns how many video/query calls were made."""
+    calls, cutoff = 0, now() - timedelta(hours=24)
+    for acc in list(db.scalars(select(TikTokAccount).where(TikTokAccount.status == "ok"))):
+        if not has_list_scope(acc) or (acc.stats_synced_at and _aware(acc.stats_synced_at) > cutoff):
+            continue
+        by_id = {p.tiktok_video_id: p for p in db.scalars(select(TikTokPost).where(
+            TikTokPost.account_id == acc.id, TikTokPost.status == "published", TikTokPost.tiktok_video_id.is_not(None)))}
+        if not by_id:
+            continue
+        acc.stats_synced_at = now()  # stamped first: a failing call is retried tomorrow, not every minute
+        db.commit()
+        ids = list(by_id)
+        for i in range(0, len(ids), 20):  # UNVERIFIED: video/query takes up to 20 ids
+            calls += 1
+            try:
+                d = _check(api(db, acc, "/video/query/?fields=id,view_count,like_count",
+                               {"filters": {"video_ids": ids[i:i + 20]}}))
+            except (AuthRequired, Transient, RateLimited, UserError) as e:
+                db.rollback()
+                log.warning("TikTok stats sync for account %s stopped: %s", acc.id, e)
+                break
+            for v in d.get("videos") or []:
+                if p := by_id.get(str(v.get("id"))):
+                    p.view_count, p.like_count, p.stats_synced_at = v.get("view_count"), v.get("like_count"), now()
+            db.commit()
+    return calls
 
 
 # ---------- auto-publish rule ----------
