@@ -164,7 +164,7 @@ def test_llm_output_is_sanitized(monkeypatch):
     from app import llm
     monkeypatch.setenv("LLM_BASE_URL", "http://x/v1")
     monkeypatch.setenv("LLM_MODEL", "m")
-    monkeypatch.setattr(llm, "chat_json", lambda s, u, timeout=180: {
+    monkeypatch.setattr(llm, "chat_json", lambda s, u, *a, **k: {
         "titles": ["<title 1>", "?Why savings fail", "为什么储蓄失败", "Start small today"],
         "description": "A clip.", "hashtags": ["#Money Tips", "money tips", "saving", "#"]})
     m = llm.generate_metadata("Here is the biggest mistake people make with savings. Start small.", {"hashtag_count": 4}, "en")

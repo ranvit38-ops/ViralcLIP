@@ -154,7 +154,7 @@ def examples():
 def test_examples_reach_the_llm_prompt(monkeypatch):
     seen = {}
 
-    def fake(system, user, timeout=180):
+    def fake(system, user, *a, **k):
         seen.update(system=system, user=user)
         return {"titles": ["GTA 6 heist went WRONG #gta6 #shorts", "The getaway crash that ruined our heist"],
                 "description": "A heist goes wrong.", "hashtags": ["gta6", "heist", "shorts"]}
@@ -187,7 +187,7 @@ def test_no_research_configured_is_the_old_behavior(yt, monkeypatch):
     assert trends.generate(uid(c), HEIST, prefs, "en") == llm.basic_metadata(HEIST, prefs) == llm.generate_metadata(HEIST, prefs, "en")
     monkeypatch.setenv("LLM_BASE_URL", "http://x")
     monkeypatch.setenv("LLM_MODEL", "m")
-    monkeypatch.setattr(llm, "chat_json", lambda s, u, timeout=180: {"titles": ["A heist"], "description": "d", "hashtags": ["x"]})
+    monkeypatch.setattr(llm, "chat_json", lambda s, u, *a, **k: {"titles": ["A heist"], "description": "d", "hashtags": ["x"]})
     assert trends.generate(uid(c), HEIST, prefs, "en")["method"] == "llm"
     assert not yt.reqs
 

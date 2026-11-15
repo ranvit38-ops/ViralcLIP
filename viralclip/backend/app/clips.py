@@ -255,12 +255,13 @@ class MetaIn(BaseModel):
 
 @router.post("/clips/{cid}/metadata")
 def regenerate_metadata(cid: int, body: MetaIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    from .pipeline import RESEARCHED, apply_metadata
+    from .pipeline import RESEARCHED, apply_metadata, similar
     c = owned_clip(db, user, cid)
-    tr = db.scalar(select(Transcript).where(Transcript.project_id == c.project_id))
-    fields = set(body.fields)
-    apply_metadata(c, trends.generate(user.id, c.transcript_excerpt, (user.settings or {}).get("metadata") or {},
-                                      tr.language if tr else None, research=bool(fields & RESEARCHED)), fields)
+    lang = db.scalar(select(Transcript.language).where(Transcript.project_id == c.project_id))
+    fields, prefs = set(body.fields), (user.settings or {}).get("metadata") or {}
+    ex = similar(user.id, c.transcript_excerpt, prefs, lang) if fields & RESEARCHED else None
+    # One request, bounded by LLM_TIMEOUT; on any failure the user gets basic suggestions right away.
+    apply_metadata(c, llm.generate_metadata(c.transcript_excerpt or "", prefs, lang, ex), fields)
     db.commit()
     return clip_out(c, db)
 

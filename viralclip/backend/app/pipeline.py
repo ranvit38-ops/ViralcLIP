@@ -201,27 +201,40 @@ def analyze(job_id: int, ctx: Ctx):
         if speech < 0.2 * duration or not cands:
             cands += selection.loudness_candidates(loud, min_len, max_len, impact)
         cands = [c for c in cands if not any(selection._overlap(c, k) for k in keep_windows)]
+        until = llm.deadline()  # one time budget for the whole AI stage; past it, clips get basic metadata
         if llm.configured() and cands:
             # Only send the strongest few to the (slow) LLM.
             shortlist = selection.pick(cands, count * 3)
             ctx.progress(0.82, f"AI reviewing {len(shortlist)} candidates")
-            cands = llm.rerank(shortlist)
+            # ponytail: fixed 40/60 split of the budget between rerank and metadata
+            cands = llm.rerank(shortlist, until=llm.deadline(0.4 * llm.BUDGET))
         chosen = selection.pick(cands, count)
         if not chosen:
             raise UserError("No suitable clips found. Try a shorter clip length or a video with more speech.")
 
         meta_prefs = prefs.get("metadata") or {}
+        ctx.progress(0.88, f"Writing titles and hashtags for {len(chosen)} clips")
+        texts = [c["text"] for c in chosen]
+        metas = llm.generate_metadata_batch(texts, meta_prefs, language,
+                                            [similar(p.user_id, t, meta_prefs, language) for t in texts], until)
         with SessionLocal() as db:
-            for i, c in enumerate(chosen):
-                ctx.progress(0.88 + 0.1 * i / len(chosen), f"Writing titles and hashtags ({i + 1}/{len(chosen)})")
-                m = trends.generate(p.user_id, c["text"], meta_prefs, language) if c["text"] else \
-                    {"titles": [], "description": "", "hashtags": [], "method": "none"}
-                db.add(Clip(project_id=p.id, start=c["start"], end=c["end"], transcript_excerpt=c["text"],
-                            score=c["score"], score_breakdown={**c["breakdown"], "method": c["method"],
-                                                               "metadata_method": m["method"],
-                                                               **({"metadata_sources": m["sources"]} if m.get("sources") else {})},
-                            reason=c["reason"], title=(m["titles"] or [f"Clip {i + 1}"])[0], title_options=m["titles"],
-                            description=m["description"], hashtags=m["hashtags"]))
+            retry = []
+            for i, (c, m) in enumerate(zip(chosen, metas)):
+                if not c["text"]:
+                    m = {"titles": [], "description": "", "hashtags": [], "method": "none"}
+                row = Clip(project_id=p.id, start=c["start"], end=c["end"], transcript_excerpt=c["text"],
+                           score=c["score"], score_breakdown={**c["breakdown"], "method": c["method"],
+                                                              "metadata_method": m["method"],
+                                                              **({"metadata_sources": m["sources"]} if m.get("sources") else {})},
+                           reason=c["reason"], title=(m["titles"] or [f"Clip {i + 1}"])[0], title_options=m["titles"],
+                           description=m["description"], hashtags=m["hashtags"])
+                db.add(row)
+                if m["method"].endswith("+timeout"):
+                    retry.append(row)
+            db.flush()
+            if retry:  # the AI ran out of time: let a background metadata job retry these with the LLM
+                db.add(Job(project_id=p.id, job_type="metadata", params={"clip_ids": [r.id for r in retry]},
+                           message="Waiting for a worker"))
             db.commit()
         _set_project_status(p.id, "ready")
     except (Cancelled, Exception):
@@ -248,15 +261,33 @@ def metadata(job_id: int, ctx: Ctx):
             q = q.where(Clip.id.in_(job.params["clip_ids"]))
         clips = db.scalars(q).all()
         fields = set(job.params.get("fields") or ["titles", "description", "hashtags"])
-        tr = db.scalar(select(Transcript).where(Transcript.project_id == p.id))
-        for i, c in enumerate(clips):
-            ctx.progress(i / max(1, len(clips)), f"Clip {i + 1}/{len(clips)}")
-            apply_metadata(c, trends.generate(p.user_id, c.transcript_excerpt, prefs, tr.language if tr else None,
-                                              research=bool(fields & RESEARCHED)), fields)
-            db.commit()
+        lang = (db.scalar(select(Transcript.language).where(Transcript.project_id == p.id)))
+        texts = [c.transcript_excerpt or "" for c in clips]
+        ctx.progress(0.05, f"Writing titles and hashtags for {len(clips)} clips")
+        exs = [similar(p.user_id, t, prefs, lang) if fields & RESEARCHED else None for t in texts]
+        # ponytail: budget scales with clip count (one analyze's worth per 8 clips)
+        metas = llm.generate_metadata_batch(texts, prefs, lang, exs, llm.deadline(llm.BUDGET * max(1, len(clips) / 8)))
+        for c, m in zip(clips, metas):
+            apply_metadata(c, m, fields)
+        db.commit()
 
 
 RESEARCHED = {"titles", "hashtags"}  # fields similar-Shorts research can influence
+
+
+def similar(user_id: int, text: str, prefs: dict, language: str | None) -> dict | None:
+    """Similar-Shorts examples {"query", "items"} to style one clip's metadata, or None. Never raises."""
+    if not text:
+        return None
+    try:
+        if hasattr(trends, "examples_for"):
+            items = trends.examples_for(user_id, text, prefs, language)
+            return {"query": "", "items": items} if items else None
+        niche = prefs.get("niche") or (prefs.get("category") if prefs.get("category") not in ("auto", "auto-detect") else "")
+        return trends.find_similar(user_id, text, niche, prefs.get("language") or language)
+    except Exception as e:  # noqa: BLE001 - research is optional
+        log.warning("YouTube research failed, generating without it: %s", e)
+        return None
 
 
 def apply_metadata(c: Clip, m: dict, fields: set):

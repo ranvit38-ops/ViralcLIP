@@ -7,8 +7,10 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.request
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 log = logging.getLogger("viralclip.llm")
 
@@ -30,11 +32,46 @@ def configured() -> bool:
     return bool(os.getenv("LLM_BASE_URL") and os.getenv("LLM_MODEL"))
 
 
-def chat_json(system: str, user: str, timeout: float = 180) -> dict:
+def _env(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name) or default)
+    except ValueError:
+        return default
+
+
+CALL_TIMEOUT = _env("LLM_TIMEOUT", 90)    # seconds per request
+BUDGET = _env("LLM_BUDGET", 300)          # seconds for one analyze's whole AI stage (rerank + metadata)
+CONCURRENCY = max(1, int(_env("LLM_CONCURRENCY", 1)))  # >1 only if the server has parallel slots
+BATCH = max(1, int(_env("LLM_BATCH", 4)))  # clips per metadata request
+EXCERPT = 1200                            # transcript characters per clip sent to the model
+
+
+def deadline(seconds: float | None = None) -> float:
+    return time.monotonic() + (BUDGET if seconds is None else seconds)
+
+
+def _timeout(until: float | None) -> float:
+    """Per-call timeout clipped to what's left of the budget; raises TimeoutError when too little is left."""
+    t = CALL_TIMEOUT if until is None else min(CALL_TIMEOUT, until - time.monotonic())
+    if t < 5:
+        raise TimeoutError("LLM time budget used up")
+    return t
+
+
+def _map(fn, items: list) -> list:
+    if CONCURRENCY == 1 or len(items) < 2:
+        return [fn(x) for x in items]
+    with ThreadPoolExecutor(CONCURRENCY) as ex:
+        return list(ex.map(fn, items))
+
+
+def chat_json(system: str, user: str, timeout: float = CALL_TIMEOUT, max_tokens: int | None = None) -> dict:
     """One chat completion that must return a JSON object. Raises on any failure."""
-    body = {"model": os.environ["LLM_MODEL"], "temperature": 0.4,
+    body = {"model": os.environ["LLM_MODEL"], "temperature": 0.3,
             "response_format": {"type": "json_object"},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+    if max_tokens:
+        body["max_tokens"] = max_tokens  # small models ramble; this caps the slowest part (generation)
     headers = {"Content-Type": "application/json"}
     if os.getenv("LLM_API_KEY"):
         headers["Authorization"] = f"Bearer {os.environ['LLM_API_KEY']}"
@@ -50,32 +87,35 @@ def chat_json(system: str, user: str, timeout: float = 180) -> dict:
 
 # ---------- clip reranking ----------
 
-def rerank(cands: list[dict], batch: int = 6) -> list[dict]:
-    """Blend LLM judgement (0-100) into heuristic scores. Failures leave candidates unchanged."""
-    system = ("You judge podcast/video excerpts as standalone short-form clips. For each excerpt rate 0-100 how well it "
-              "works on its own for a viewer with no context: strong opening, clear point, complete ending, interesting. "
-              "Be strict and honest; do not predict views. "
-              'Reply JSON: {"clips":[{"id":<id>,"score":<0-100>,"reason":"<one short sentence>"}]}')
-    for i in range(0, len(cands), batch):
+RERANK_SYSTEM = ("You judge video excerpts as standalone short-form clips. Rate each 0-100 for a viewer with no context: "
+                 "strong opening, clear point, complete ending, interesting. Be strict; do not predict views. "
+                 'Reply JSON: {"clips":[{"id":<id>,"score":<0-100>,"reason":"<max 12 words>"}]}')
+
+
+def rerank(cands: list[dict], batch: int = 8, until: float | None = None) -> list[dict]:
+    """Blend LLM judgement (0-100) into heuristic scores. Failures and the time budget leave candidates unchanged."""
+    def judge(i: int) -> dict:
         chunk = cands[i:i + batch]
-        user = "\n\n".join(f"[id={i + k}] {c['text'][:1500]}" for k, c in enumerate(chunk))
+        user = "\n\n".join(f"[id={i + k}] {c['text'][:EXCERPT]}" for k, c in enumerate(chunk))
         try:
-            got = {int(x["id"]): x for x in chat_json(system, user).get("clips", []) if "id" in x}
+            out = chat_json(RERANK_SYSTEM, user, _timeout(until), max_tokens=40 * len(chunk) + 40)
+            return {int(x["id"]): x for x in out.get("clips", []) if isinstance(x, dict) and "id" in x}
         except Exception as e:  # noqa: BLE001 - LLM is optional; keep heuristic result
             log.warning("LLM rerank failed: %s", e)
+            return {}
+    got = {k: x for d in _map(judge, list(range(0, len(cands), batch))) for k, x in d.items()}
+    for k, c in enumerate(cands):
+        x = got.get(k)
+        if x is None:
             continue
-        for k, c in enumerate(chunk):
-            x = got.get(i + k)
-            if x is None:
-                continue
-            try:
-                s = max(0.0, min(100.0, float(x["score"])))
-            except (TypeError, ValueError, KeyError):
-                continue
-            c["breakdown"] = {**c["breakdown"], "llm": round(s / 100, 3)}
-            c["score"] = round(0.5 * c["score"] + 0.5 * s, 1)
-            c["reason"] = f"AI: {str(x.get('reason', '')).strip()[:300]} {c['reason']}".strip()
-            c["method"] += "+llm"
+        try:
+            s = max(0.0, min(100.0, float(x["score"])))
+        except (TypeError, ValueError, KeyError):
+            continue
+        c["breakdown"] = {**c["breakdown"], "llm": round(s / 100, 3)}
+        c["score"] = round(0.5 * c["score"] + 0.5 * s, 1)
+        c["reason"] = f"AI: {str(x.get('reason', '')).strip()[:300]} {c['reason']}".strip()
+        c["method"] += "+llm"
     return cands
 
 
@@ -96,8 +136,9 @@ def hashtag_ranking(items: list[dict]) -> list[str]:
 
 
 def _sources(examples: dict) -> dict:
-    return {"query": examples["query"],
-            "similar": [{"title": x["title"], "views": x["views"], "url": x["url"]} for x in examples["items"][:5]]}
+    return {"query": examples.get("query", ""),
+            "similar": [{"title": x["title"], "views": x.get("views", 0), "url": x.get("url", "")}
+                        for x in examples["items"][:5]]}
 
 
 def basic_metadata(text: str, prefs: dict, examples: dict | None = None) -> dict:
@@ -154,60 +195,130 @@ def _usable_title(t: str, lang: str | None) -> bool:
     return True
 
 
-def generate_metadata(text: str, prefs: dict, language: str | None = None, examples: dict | None = None) -> dict:
+
+
+def _system_prompt(prefs: dict, lang: str | None, examples: bool) -> str:
+    niche = str(prefs.get("niche") or "").strip()
+    short = (prefs.get("description_length") or "short") == "short"
+    s = ("You write YouTube Shorts metadata for video clips, using ONLY what each clip's transcript says. "
+         "Never invent facts, numbers or claims. No misleading clickbait, no ALL CAPS, at most one ! or ? per title, "
+         "titles under 70 characters. "
+         f"Title style: {prefs.get('title_style') or 'mixed: curiosity, educational, question, direct'}. "
+         f"Tone: {prefs.get('tone') or 'natural'}. Audience: {prefs.get('audience') or 'general'}. "
+         f"Category: {prefs.get('category') or 'auto-detect'}. " + (f"Niche / game: {niche}. " if niche else "") +
+         f"Write everything in {LANG_NAMES.get(lang or '', lang or 'the language of the transcript')} only. "
+         "Refer to the speaker neutrally; never assume their gender. "
+         "For EACH clip, about that clip only: 4 different titles in different styles, "
+         f"a description of {'1-2' if short else '3-5'} sentences (natural keywords, no hashtags), "
+         f"and exactly {int(prefs.get('hashtag_count') or 5)} specific hashtags without '#'. "
+         'Reply JSON: {"clips":[{"id":<id>,"titles":["..."],"description":"...","hashtags":["..."]}]}')
+    if examples:
+        s += (" Similar Shorts that performed well are given as style examples: match their length, hook and phrasing, "
+              "but write only about the clip. Never copy a title verbatim and make no claim the transcript doesn't "
+              "support. Prefer their hashtags that genuinely fit, and keep 1-2 broad ones such as shorts"
+              + (f" and the niche ({niche})" if niche else "") + ".")
+    return s
+
+
+def _merge_examples(examples: list[dict | None]) -> list[dict]:
+    """The batch's similar Shorts, deduplicated by title, most viewed first: sent once per request."""
+    seen = {}
+    for ex in examples:
+        for x in (ex or {}).get("items") or []:
+            seen.setdefault(str(x.get("title", "")).strip().lower(), x)
+    return sorted((x for k, x in seen.items() if k), key=lambda x: -int(x.get("views") or 0))[:8]
+
+
+def _finish(raw: dict, text: str, prefs: dict, lang: str | None, examples: dict | None, copied: set) -> dict:
+    """Sanitize one clip's LLM reply and top it up from the basic generator. Raises ValueError if unusable."""
+    n = int(prefs.get("hashtag_count") or 5)
+    titles = [re.sub(r"\s+", " ", str(t)).strip().strip('"').lstrip("?!.,:;-–— ")[:100] for t in raw.get("titles") or []]
+    titles = [t for t in titles if _usable_title(t, lang) and t.lower() not in copied]
+    tags = list(dict.fromkeys(t for t in (_clean_tag(h) for h in raw.get("hashtags") or []) if t))[:max(n, 3)]
+    desc = str(raw.get("description", "")).strip()[:4500]
+    if lang and lang not in ("zh", "ja", "ko") and CJK.search(desc):
+        desc = ""
+    if not titles:
+        raise ValueError("no usable titles")
+    # Small local models often return fewer items than asked; top up from the transcript.
+    basic = basic_metadata(text, prefs, examples)
+    res = {"titles": list(dict.fromkeys(titles + basic["titles"]))[:5], "description": desc or basic["description"],
+           "hashtags": list(dict.fromkeys(tags + basic["hashtags"]))[:n], "method": "llm"}
+    if examples:
+        res.update(method="llm+trends", sources=basic["sources"])
+    return res
+
+
+def _llm_batch(texts: list[str], examples: list[dict | None], prefs: dict, lang: str | None,
+               until: float | None) -> list[dict | None]:
+    """One request for several clips. One result per clip; None where the reply was missing or unusable."""
+    shared = _merge_examples(examples)
+    user = ""
+    if shared:
+        user = ("Similar Shorts that did well (style examples only, not about these clips):\n"
+                + "\n".join(f'- "{x["title"]}" ({int(x.get("views") or 0):,} views)' for x in shared)
+                + "\nHashtags they use, most frequent first: " + ", ".join(hashtag_ranking(shared)[:15]) + "\n\n")
+    user += "\n\n".join(f"Clip [id={k + 1}] transcript:\n{t[:EXCERPT]}" for k, t in enumerate(texts))
+    out = chat_json(_system_prompt(prefs, lang, bool(shared)), user, _timeout(until), max_tokens=220 * len(texts) + 40)
+    clips = out.get("clips")
+    if not isinstance(clips, list):
+        clips = [{**out, "id": 1}] if len(texts) == 1 else []  # a lone clip often comes back unwrapped
+    by_id = {}
+    for c in clips:
+        try:
+            by_id.setdefault(int(c["id"]), c)
+        except (TypeError, ValueError, KeyError):
+            continue
+    if len(texts) == 1 and not by_id and len(clips) == 1 and isinstance(clips[0], dict):
+        by_id[1] = clips[0]
+    copied = {str(x["title"]).strip().lower() for x in shared}
+    res = []
+    for k, t in enumerate(texts):
+        try:
+            res.append(_finish(by_id[k + 1], t, prefs, lang, examples[k], copied))
+        except Exception as e:  # noqa: BLE001 - missing or unusable: the caller retries this clip alone
+            log.warning("LLM metadata unusable for clip %d of %d: %s", k + 1, len(texts), e)
+            res.append(None)
+    return res
+
+
+def generate_metadata_batch(texts: list[str], prefs: dict, language: str | None = None,
+                            examples: list[dict | None] | None = None, until: float | None = None) -> list[dict]:
+    """Metadata for several clips, BATCH clips per request. Never raises.
+
+    A failed batch, or a clip missing from its reply, is retried alone, then falls back to basic. Once the time budget
+    (`until`, a time.monotonic() value) is used up the remaining clips get basic metadata with method "...+timeout".
+    """
+    examples = examples or [None] * len(texts)
+    out: list[dict | None] = [None] * len(texts)
+    if configured():
+        lang = prefs.get("language") or language
+        todo = [i for i, t in enumerate(texts) if t]
+
+        def run(idx: list[int]):
+            try:
+                got = _llm_batch([texts[i] for i in idx], [examples[i] for i in idx], prefs, lang, until)
+            except Exception as e:  # noqa: BLE001
+                log.warning("LLM metadata failed for %d clip(s): %s", len(idx), e)
+                return
+            for i, m in zip(idx, got):
+                out[i] = m
+        batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
+        _map(run, batches)
+        _map(run, [[i] for b in batches if len(b) > 1 for i in b if out[i] is None])
+    late = until is not None and until - time.monotonic() < 5
+    for i, m in enumerate(out):
+        if m is None:
+            m = out[i] = basic_metadata(texts[i], prefs, examples[i])
+            if late and configured() and texts[i]:
+                m["method"] += "+timeout"  # labeled, so a metadata job can retry it with the LLM later
+    return out
+
+
+def generate_metadata(text: str, prefs: dict, language: str | None = None, examples: dict | None = None,
+                      until: float | None = None) -> dict:
     """Return {titles, description, hashtags, method[, sources]}. Uses the LLM when configured.
 
-    `examples` ({"query", "items"} from trends.find_similar) are similar Shorts that did well: style hints only.
+    `examples` ({"query", "items"} of similar Shorts that did well) are style hints only.
     """
-    if not configured():
-        return basic_metadata(text, prefs, examples)
-    lang = prefs.get("language") or language
-    lang_name = LANG_NAMES.get(lang or "", lang or "the same language as the transcript")
-    n = int(prefs.get("hashtag_count") or 5)
-    niche = str(prefs.get("niche") or "").strip()
-    system = (
-        "You write YouTube Shorts metadata for a clip, using ONLY what the transcript says. "
-        "Never invent facts, numbers or claims. No clickbait that misrepresents the content, no ALL CAPS titles, "
-        "at most one ! or ? per title, titles under 70 characters. "
-        f"Title style preference: {prefs.get('title_style') or 'mixed: curiosity, educational, question, direct'}. "
-        f"Tone: {prefs.get('tone') or 'natural'}. Audience: {prefs.get('audience') or 'general'}. "
-        f"Category: {prefs.get('category') or 'auto-detect'}. " + (f"Niche / game: {niche}. " if niche else "") +
-        f"Write everything in {lang_name} only. "
-        "Refer to the speaker neutrally; never assume their gender. "
-        f"Description: {'1-2' if (prefs.get('description_length') or 'short') == 'short' else '3-5'} sentences, natural keywords, no hashtags. "
-        f"Hashtags: exactly {n}, specific to the subject, no generic spam, no '#' prefix. "
-        'Give exactly 4 different titles in different styles. Reply with a JSON object with keys '
-        '"titles" (array of 4 strings), "description" (string) and "hashtags" (array of strings).')
-    user = f"Transcript of the clip:\n{text[:4000]}"
-    if examples:
-        system += (
-            " You also get titles of similar Shorts that performed well, with view counts, and the hashtags they use "
-            "most. Match the style and patterns of what performs well (length, hook, structure, phrasing), but write "
-            "only about what THIS clip's transcript says. Never copy a title verbatim and make no claim the transcript "
-            "doesn't support. Prefer hashtags from the list that genuinely fit this clip, and keep 1-2 broad ones such "
-            "as shorts" + (f" and the niche ({niche})" if niche else "") + ".")
-        user += ("\n\nSimilar Shorts that did well (style examples only, not about this clip):\n"
-                 + "\n".join(f'- "{x["title"]}" ({x["views"]:,} views)' for x in examples["items"])
-                 + "\nHashtags they use, most frequent first: " + ", ".join(hashtag_ranking(examples["items"])[:20]))
-    try:
-        out = chat_json(system, user)
-        copied = {x["title"].strip().lower() for x in (examples or {}).get("items", [])}
-        titles = [re.sub(r"\s+", " ", str(t)).strip().strip('"').lstrip("?!.,:;-–— ")[:100] for t in out.get("titles", [])]
-        titles = [t for t in titles if _usable_title(t, lang) and t.lower() not in copied]
-        tags = list(dict.fromkeys(t for t in (_clean_tag(h) for h in out.get("hashtags", [])) if t))[:max(n, 3)]
-        desc = str(out.get("description", "")).strip()[:4500]
-        if lang and lang not in ("zh", "ja", "ko") and CJK.search(desc):
-            desc = ""
-        if not titles:
-            raise ValueError("no titles")
-        # Small local models often return fewer items than asked; top up from the transcript.
-        basic = basic_metadata(text, prefs, examples)
-        titles = list(dict.fromkeys(titles + basic["titles"]))[:5]
-        tags = list(dict.fromkeys(tags + basic["hashtags"]))[:n]
-        res = {"titles": titles, "description": desc or basic["description"], "hashtags": tags, "method": "llm"}
-        if examples:
-            res.update(method="llm+trends", sources=basic["sources"])
-        return res
-    except Exception as e:  # noqa: BLE001
-        log.warning("LLM metadata failed, using basic: %s", e)
-        return basic_metadata(text, prefs, examples)
+    return generate_metadata_batch([text], prefs, language, [examples], until)[0]
