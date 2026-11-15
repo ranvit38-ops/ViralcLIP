@@ -216,7 +216,9 @@ def test_analyze_metadata_job_and_regenerate_use_research(yt, monkeypatch):
     monkeypatch.setattr(config, "YOUTUBE_RESEARCH_API_KEY", "k")
     sents = [s for s in re.split(r"(?<=[.])\s+", HEIST * 3) if s]
 
-    def fake_transcribe(audio, model, language, ctx, lo, hi):
+    def fake_transcribe(chunks, model, language, ctx, lo, hi, duration=None):
+        for _ in chunks:  # drain the stream like the real transcriber
+            pass
         segs, t = [], 1.0
         for s in sents:
             words = [{"start": round(t + i * 0.4, 2), "end": round(t + i * 0.4 + 0.3, 2), "word": " " + w, "probability": 0.9}

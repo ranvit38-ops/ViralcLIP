@@ -173,28 +173,48 @@ def impact_per_second(audio: np.ndarray, sr: int = 16000, n_fft: int = 256, hop_
     """Per-second density of sharp transients (hits, gunshots, explosions) via spectral flux on the 1-6 kHz band.
     Each peak counts 1-4 by its strength over the threshold. Steady tones and stationary noise give ~nothing.
     Processed in 60 s chunks so a 2 h file never materializes a full spectrogram."""
-    audio = np.asarray(audio, np.float32)
-    n_sec, hop = len(audio) // sr, int(sr * hop_s)
-    if n_sec == 0 or len(audio) < n_fft + 4 * hop:
-        return [0.0] * n_sec
-    frames = np.lib.stride_tricks.sliding_window_view(audio, n_fft)[::hop]  # a view, no copy
-    win = np.hanning(n_fft).astype(np.float32)
-    lo, hi = max(1, band[0] * n_fft // sr), min(n_fft // 2 + 1, band[1] * n_fft // sr)
-    flux, prev = [], None
-    for f0 in range(0, len(frames), chunk_frames):
-        mag = np.abs(np.fft.rfft(frames[f0:f0 + chunk_frames] * win, axis=1)[:, lo:hi])
-        d = np.diff(mag if prev is None else np.vstack([prev, mag]), axis=0)
-        flux.append(np.maximum(d, 0).sum(axis=1))
-        prev = mag[-1:]
-    flux = np.concatenate(flux)  # flux[i]: frame i+1 vs frame i
-    # ponytail: one global threshold (4x median flux); use a rolling median if loudness varies a lot within a video.
-    thr = max(4 * float(np.median(flux)), 0.5)
-    local_max = np.lib.stride_tricks.sliding_window_view(np.pad(flux, 3), 7).max(axis=1)  # +-30 ms min gap
-    peaks = np.flatnonzero((flux >= thr) & (flux == local_max))
-    sec = (peaks + 1) * hop // sr
-    keep = sec < n_sec
-    strength = np.minimum(flux[peaks[keep]] / thr, 4.0)
-    return np.bincount(sec[keep], weights=strength, minlength=n_sec)[:n_sec].round(3).tolist()
+    f = ImpactStream(sr, n_fft, hop_s, band, chunk_frames)
+    f.add(audio)
+    return f.result()
+
+
+class ImpactStream:
+    """impact_per_second fed piece by piece (any sizes; same result as all at once), for streamed audio."""
+
+    def __init__(self, sr: int = 16000, n_fft: int = 256, hop_s: float = 0.01, band: tuple[int, int] = (1000, 6000),
+                 chunk_frames: int = 6000):
+        self.sr, self.n_fft, self.hop, self.chunk_frames = sr, n_fft, int(sr * hop_s), chunk_frames
+        self.win = np.hanning(n_fft).astype(np.float32)
+        self.lo, self.hi = max(1, band[0] * n_fft // sr), min(n_fft // 2 + 1, band[1] * n_fft // sr)
+        self.tail, self.prev, self.flux, self.samples = np.zeros(0, np.float32), None, [], 0
+
+    def add(self, audio: np.ndarray):
+        audio = np.asarray(audio, np.float32)
+        self.samples += len(audio)
+        buf = np.concatenate([self.tail, audio]) if len(self.tail) else audio
+        n = (len(buf) - self.n_fft) // self.hop + 1 if len(buf) >= self.n_fft else 0
+        frames = np.lib.stride_tricks.sliding_window_view(buf, self.n_fft)[::self.hop] if n else None  # a view
+        for f0 in range(0, n, self.chunk_frames):
+            mag = np.abs(np.fft.rfft(frames[f0:f0 + self.chunk_frames] * self.win, axis=1)[:, self.lo:self.hi])
+            d = np.diff(mag if self.prev is None else np.vstack([self.prev, mag]), axis=0)
+            self.flux.append(np.maximum(d, 0).sum(axis=1))
+            self.prev = mag[-1:]
+        self.tail = buf[n * self.hop:].copy()  # samples the next frames still need
+
+    def result(self) -> list[float]:
+        sr, hop = self.sr, self.hop
+        n_sec = self.samples // sr
+        if n_sec == 0 or self.samples < self.n_fft + 4 * hop:
+            return [0.0] * n_sec
+        flux = np.concatenate(self.flux)  # flux[i]: frame i+1 vs frame i
+        # ponytail: one global threshold (4x median flux); use a rolling median if loudness varies a lot within a video.
+        thr = max(4 * float(np.median(flux)), 0.5)
+        local_max = np.lib.stride_tricks.sliding_window_view(np.pad(flux, 3), 7).max(axis=1)  # +-30 ms min gap
+        peaks = np.flatnonzero((flux >= thr) & (flux == local_max))
+        sec = (peaks + 1) * hop // sr
+        keep = sec < n_sec
+        strength = np.minimum(flux[peaks[keep]] / thr, 4.0)
+        return np.bincount(sec[keep], weights=strength, minlength=n_sec)[:n_sec].round(3).tolist()
 
 
 def loudness_candidates(loud: list[float], min_len: float, max_len: float, impact: list[float] | None = None) -> list[dict]:
