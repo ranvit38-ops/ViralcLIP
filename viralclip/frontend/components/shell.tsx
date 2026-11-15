@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, CalendarDays, Loader2, Clapperboard, Film, LayoutDashboard, ListVideo, LogOut, Menu, MonitorPlay, Music2, Plus, Settings, X } from "lucide-react";
+import { Bot, CalendarDays, Loader2, Clapperboard, Film, LayoutDashboard, ListChecks, ListVideo, LogOut, Menu, MonitorPlay, Music2, Plus, Settings, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -17,6 +17,7 @@ const NAV = [
   { href: "/tiktok", label: "TikTok", icon: Music2 },
   { href: "/calendar", label: "Publishing Calendar", icon: CalendarDays },
   { href: "/queue", label: "Upload Queue", icon: ListVideo },
+  { href: "/setup", label: "Setup", icon: ListChecks },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

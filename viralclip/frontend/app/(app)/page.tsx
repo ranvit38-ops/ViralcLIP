@@ -8,6 +8,7 @@ import { Card, Empty, LinkButton, Loading, PageHeader, Progress, StatusBadge } f
 import { JOB_LABEL } from "@/components/project-panels";
 import { YouTubeStats } from "@/components/youtube-stats";
 import { TikTokStats } from "@/components/tiktok";
+import { SetupBanner } from "@/components/setup";
 
 type Dash = {
   projects: number; clips: number; clips_awaiting_review: number; active_jobs: number; failed_jobs: number;
@@ -39,6 +40,7 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader title="Dashboard" actions={<LinkButton href="/projects/new" variant="primary"><Plus size={16} /> New project</LinkButton>} />
+      <SetupBanner />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1">
         <Stat label="Projects" value={d.projects} icon={<Film size={14} />} href="/projects" />
         <Stat label="Clips generated" value={d.clips} icon={<Clapperboard size={14} />} href="/clips" />
