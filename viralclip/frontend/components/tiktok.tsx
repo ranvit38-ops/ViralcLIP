@@ -1,11 +1,11 @@
 "use client";
 
-import { AlertTriangle, MonitorPlay, Music2, RotateCcw, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Copy, MonitorPlay, Music2, RotateCcw, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, ApiError, fmtDate } from "@/lib/api";
+import { api, ApiError, fmtDate, type Clip } from "@/lib/api";
 import { browserTz, defaultLocalSlot, fmtInZone } from "@/lib/youtube";
-import { privacyLabel, type TtAccount, type TtConfig, type TtCreatorInfo, type TtMode, type TtPost, type TtStats } from "@/lib/tiktok";
+import { privacyLabel, ttCaption, type TtAccount, type TtConfig, type TtCreatorInfo, type TtMode, type TtPost, type TtStats } from "@/lib/tiktok";
 import { selectCls, TimeZoneSelect } from "@/components/schedule";
 import { Button, Card, ErrorNote, Field, Input, Loading, StatusBadge } from "@/components/ui";
 
@@ -48,10 +48,17 @@ export function TikTokPublish({ clipIds, onClose, onDone }: { clipIds: number[];
   const [error, setError] = useState("");
   const [dupe, setDupe] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [clips, setClips] = useState<Clip[]>([]);
+  const [copied, setCopied] = useState<number | null>(null);
+  const clipKey = clipIds.join(",");
 
-  const mode: TtMode = modeChoice ?? (cfg?.audited ? "direct" : "draft");
+  const mode: TtMode = modeChoice ?? cfg?.default_mode ?? (cfg?.audited ? "direct" : "draft");
   const direct = mode === "direct";
   const bulk = clipIds.length > 1 && timing === "schedule";
+
+  useEffect(() => {
+    Promise.all(clipKey.split(",").map((id) => api<Clip>(`/api/clips/${id}`))).then(setClips).catch(() => {});
+  }, [clipKey]);
 
   useEffect(() => {
     api<TtConfig>("/api/tiktok/config").then(setCfg).catch((e) => setError(e.message));
@@ -236,7 +243,7 @@ export function TikTokPublish({ clipIds, onClose, onDone }: { clipIds: number[];
               ))}
             </ol>
           )}
-          <p className="flex gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {SCHEDULE_WARNING}</p>
+          <p className="flex gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {cfg.scheduling_note || SCHEDULE_WARNING}</p>
         </div>
       )}
 
@@ -244,8 +251,22 @@ export function TikTokPublish({ clipIds, onClose, onDone }: { clipIds: number[];
         By posting, you agree to TikTok&apos;s{" "}
         {direct && disclose && branded && <><a className="underline hover:text-fg" href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noreferrer">Branded Content Policy</a> and </>}
         <a className="underline hover:text-fg" href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer">Music Usage Confirmation</a>.
-        {!direct && " Drafts land in your TikTok inbox notifications; open the app to finish and post them."}
       </p>
+      {!direct && (
+        <div className="space-y-2 rounded-md border border-line p-3 text-xs text-muted">
+          <p>Drafts land in your TikTok inbox. TikTok&apos;s draft upload has no caption field, so you&apos;ll type the caption in the TikTok app when you finish the post. Copy it now:</p>
+          <ul className="max-h-40 space-y-1.5 overflow-y-auto">
+            {clips.map((c) => (
+              <li key={c.id} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-fg" title={ttCaption(c)}>{ttCaption(c) || "Untitled clip"}</span>
+                <Button type="button" variant="ghost" className="h-7 shrink-0 px-2 text-xs" onClick={async () => {
+                  try { await navigator.clipboard.writeText(ttCaption(c)); setCopied(c.id); } catch { setError("Couldn't copy. Select the caption text and copy it manually."); }
+                }}>{copied === c.id ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy caption</>}</Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <ErrorNote>{error}</ErrorNote>
       <div className="flex flex-wrap gap-2">
         {bulk && !preview ? (

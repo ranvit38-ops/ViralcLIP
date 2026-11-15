@@ -12,7 +12,7 @@ import { Badge, Button, Card, Empty, ErrorNote, Field, Input, PageHeader, Loadin
 
 const connectCls = "inline-flex items-center justify-center gap-2 rounded-md px-3 h-9 text-sm font-medium transition";
 
-function RuleForm({ acc, audited, onSaved }: { acc: TtAccount; audited: boolean; onSaved: () => void }) {
+function RuleForm({ acc, audited, note, onSaved }: { acc: TtAccount; audited: boolean; note: string; onSaved: () => void }) {
   const r = acc.rule;
   const [enabled, setEnabled] = useState(r?.enabled ?? false);
   const [time, setTime] = useState(r?.time_of_day ?? "18:00");
@@ -71,7 +71,7 @@ function RuleForm({ acc, audited, onSaved }: { acc: TtAccount; audited: boolean;
         )}
       </div>
       <p className="text-xs text-muted">
-        Only clips you&apos;ve approved and rendered get posted, each into the next free slot. With more than one per day, slots are spread evenly across 24 hours from the first slot. Posts made by the rule leave comments, duets and stitches off and add no content disclosure. {SCHEDULE_WARNING}
+        Only clips you&apos;ve approved and rendered get posted, each into the next free slot. With more than one per day, slots are spread evenly across 24 hours from the first slot. Posts made by the rule leave comments, duets and stitches off and add no content disclosure. {note}
       </p>
       <ErrorNote>{error}</ErrorNote>
       <div className="flex items-center gap-3">
@@ -146,12 +146,12 @@ function TikTok() {
                 </p>
                 <p className="truncate text-xs text-muted">{a.posts_today}/{a.daily_limit} posts today</p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                 {a.status !== "ok" && <a href="/api/tiktok/connect" className={`${connectCls} border border-line bg-panel-2 hover:bg-line`}><RefreshCw size={16} /> Reconnect</a>}
                 <Button variant="danger" onClick={() => disconnect(a)}><Unplug size={16} /> Disconnect</Button>
               </div>
             </div>
-            <RuleForm acc={a} audited={cfg.audited} onSaved={load} />
+            <RuleForm acc={a} audited={cfg.audited} note={cfg.scheduling_note || SCHEDULE_WARNING} onSaved={load} />
           </Card>
         ))}
 

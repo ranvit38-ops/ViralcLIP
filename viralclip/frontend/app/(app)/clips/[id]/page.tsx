@@ -559,7 +559,7 @@ export default function ClipEditor() {
             onDiscard={() => { setDraft(orig); setLines(linesOrig); setError(""); }} />
         </div>
       </div>
-      {publishing && <PublishDialog clipIds={[clip.id]} initial={ready?.youtube === false ? "tiktok" : "youtube"} onClose={() => setPublishing(false)} onDone={() => setPublishing(false)} />}
+      {publishing && <PublishDialog clipIds={[clip.id]} onClose={() => setPublishing(false)} onDone={() => setPublishing(false)} />}
     </>
   );
 }

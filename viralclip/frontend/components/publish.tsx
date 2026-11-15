@@ -1,7 +1,8 @@
 "use client";
 
 import { MonitorPlay, Music2, Send, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 import { YouTubePublish } from "@/components/schedule";
 import { TikTokPublish } from "@/components/tiktok";
 import { Card } from "@/components/ui";
@@ -9,10 +10,13 @@ import { Card } from "@/components/ui";
 export type Platform = "youtube" | "tiktok";
 
 /** One "Publish" dialog for the editor and the bulk bar, with a tab per platform. */
-export function PublishDialog({ clipIds, onClose, onDone, initial = "youtube" }: {
-  clipIds: number[]; onClose: () => void; onDone?: () => void; initial?: Platform;
-}) {
-  const [tab, setTab] = useState<Platform>(initial);
+export function PublishDialog({ clipIds, onClose, onDone }: { clipIds: number[]; onClose: () => void; onDone?: () => void }) {
+  const [tab, setTab] = useState<Platform>("youtube");
+  // Open on TikTok when YouTube isn't set up but TikTok is.
+  useEffect(() => {
+    const ok = (p: string) => api<{ configured: boolean }>(p).then((c) => c.configured).catch(() => false);
+    Promise.all([ok("/api/youtube/config"), ok("/api/tiktok/config")]).then(([yt, tt]) => { if (!yt && tt) setTab("tiktok"); });
+  }, []);
   const tabs = [["youtube", "YouTube", MonitorPlay], ["tiktok", "TikTok", Music2]] as const;
   return (
     <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="publish-title">

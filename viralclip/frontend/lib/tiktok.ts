@@ -1,4 +1,11 @@
-export type TtConfig = { configured: boolean; missing: string[]; audited: boolean; redirect_uri: string };
+export type TtConfig = {
+  configured: boolean; missing: string[]; audited: boolean; redirect_uri: string;
+  daily_limit?: number; default_mode?: TtMode; scheduling_note?: string;
+};
+
+/** Same caption the backend sends for direct posts: title plus #hashtags. */
+export const ttCaption = (c: { title: string; hashtags: string[] }) =>
+  [c.title.trim(), ...c.hashtags.map((h) => h.replace(/^#/, "").replace(/[^\p{L}\p{N}_]/gu, "")).filter(Boolean).map((t) => `#${t}`)].join(" ");
 
 export type TtRule = { enabled: boolean; time_of_day: string; timezone: string; clips_per_day: number; mode: TtMode; privacy_level: string | null };
 

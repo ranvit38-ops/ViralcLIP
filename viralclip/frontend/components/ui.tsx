@@ -51,7 +51,7 @@ const STATUS_TONE: Record<string, keyof typeof TONES> = {
   uploaded: "blue", ready: "green", done: "green", approved: "green", published: "green", scheduled: "blue",
   uploading: "amber", processing: "amber", queued: "amber", running: "amber", rendering: "amber", cancel_requested: "amber",
   failed: "red", rejected: "red", cancelled: "gray", suggested: "gray", none: "gray", outdated: "amber",
-  importing: "amber", paused: "gray", quota_exceeded: "amber", auth_required: "red", schedule_failed: "red",
+  importing: "amber", paused: "gray", draft_sent: "green", quota_exceeded: "amber", auth_required: "red", schedule_failed: "red",
 };
 
 export function Select({ className, ...p }: ComponentProps<"select">) {
