@@ -11,6 +11,7 @@ _Last updated: all planned phases are implemented. What's verified and what isn'
 | Transcription | faster-whisper with word timestamps and real progress; models download on first use; CPU or GPU | Real Whisper tiny and small on synthesized speech |
 | Clip finding | Sentence-bounded windows; transparent score (hook, standalone, completeness, value, pacing, energy) with reasons; no overlapping duplicates; transition and housekeeping lines avoided; loudness-peak fallback for no-speech footage | pytest on a real transcript |
 | AI (optional) | Any OpenAI-compatible LLM re-ranks clips and writes 4 titles, a description and hashtags; filters placeholders, wrong-language output and stray punctuation; falls back to basic suggestions | Real Qwen2.5-3B via llama.cpp, plus pytest with mocks |
+| Similar-Shorts research | Titles/hashtags learn style and hashtags from recent high-view Shorts (YouTube Data API v3 `search.list` + `videos.list`, no scraping) in analyze, the metadata job and per-clip regenerate; niche setting; 24 h DB cache; daily search budget in the DB (dedicated `YOUTUBE_RESEARCH_API_KEY`, or the channel's OAuth quota only while uploads leave room); `quotaExceeded` backs off to Pacific midnight; provenance shown in the clip editor | pytest with Google mocked |
 | Rendering | 9:16 / 1:1 / 4:5 / 16:9; **face-tracked crop**; **streamer split screen** (facecam top, gameplay bottom, auto-detected); blurred-background fit; **active-speaker crop** (2+ people); **jump cuts** (pauses, retakes, um/uh fillers; edges snapped to the quietest point); **punch-in zoom**; **hook title**; word-highlight captions (4 presets, full style control, editable text); -14 LUFS audio; H.264 CRF 18 | Real renders checked frame by frame (real face image) + pytest |
 | Editing | Trim, aspect, layout, crop position, caption style and text, Shorts effects, title/description/hashtags, regenerate (never overwrites an edited title), approve/reject, delete | 38-check browser end-to-end |
 | Clips library | Filters, search, bulk approve / render / zip download / publish | Browser end-to-end |
@@ -22,13 +23,14 @@ _Last updated: all planned phases are implemented. What's verified and what isn'
 | Settings | Defaults for clip length/count/aspect/layout/captions/effects, metadata preferences, model; system info (disk, models, LLM) | Browser (persistence) |
 | Infrastructure | SQLite or PostgreSQL; Alembic migrations, safe when processes start concurrently; Docker Compose (Ubuntu 24.04 image) | Suite passes on Postgres 16; images built and run end to end |
 
-**Tests:** backend 68 passed (`cd backend && .venv/bin/python -m pytest -q`). Frontend tsc, eslint and build are clean. The browser end-to-end script (`frontend/e2e/clips.e2e.cjs`) passed 38 checks, and a separate whole-product smoke test covered every page at desktop and 390 px with no console errors.
+**Tests:** backend 99 passed (`cd backend && .venv/bin/python -m pytest -q`). Frontend tsc, eslint and build are clean. The browser end-to-end script (`frontend/e2e/clips.e2e.cjs`) passed 38 checks, and a separate whole-product smoke test covered every page at desktop and 390 px with no console errors.
 
 ## Not verified (impossible without your real accounts)
 
 - **Real Google sign-in and real YouTube uploads.** All tests use a mocked Google. Before trusting it, connect a channel and upload one private test clip; follow `docs/YOUTUBE_SETUP.md`.
 - **Real Twitch sign-in and real VOD downloads.** Mocked too. Follow `docs/TWITCH_SETUP.md`.
 - **Real TikTok sign-in and posting.** Mocked, and written without access to TikTok's developer docs. Items to check are marked `UNVERIFIED` in `backend/app/tiktok.py` and "(verify)" in `docs/TIKTOK_SETUP.md`.
+- **Real YouTube research calls.** `search.list`/`videos.list` are mocked in tests; check Settings → AI after adding `YOUTUBE_RESEARCH_API_KEY` and regenerate one clip's hashtags.
 - **yt-dlp against live YouTube and Twitch.** It works today, but it breaks whenever those sites change. Update it with `pip install -U yt-dlp`.
 
 ## Known limits

@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from sqlalchemy import delete, select
 
-from . import config, llm, selection
+from . import config, llm, selection, trends
 from .db import SessionLocal
 from .models import Clip, Job, Project, Transcript, User
 from .projects import project_dir, source_path
@@ -182,11 +182,12 @@ def analyze(job_id: int, ctx: Ctx):
         with SessionLocal() as db:
             for i, c in enumerate(chosen):
                 ctx.progress(0.88 + 0.1 * i / len(chosen), f"Writing titles and hashtags ({i + 1}/{len(chosen)})")
-                m = llm.generate_metadata(c["text"], meta_prefs, language) if c["text"] else \
+                m = trends.generate(p.user_id, c["text"], meta_prefs, language) if c["text"] else \
                     {"titles": [], "description": "", "hashtags": [], "method": "none"}
                 db.add(Clip(project_id=p.id, start=c["start"], end=c["end"], transcript_excerpt=c["text"],
                             score=c["score"], score_breakdown={**c["breakdown"], "method": c["method"],
-                                                               "metadata_method": m["method"]},
+                                                               "metadata_method": m["method"],
+                                                               **({"metadata_sources": m["sources"]} if m.get("sources") else {})},
                             reason=c["reason"], title=(m["titles"] or [f"Clip {i + 1}"])[0], title_options=m["titles"],
                             description=m["description"], hashtags=m["hashtags"]))
             db.commit()
@@ -218,8 +219,12 @@ def metadata(job_id: int, ctx: Ctx):
         tr = db.scalar(select(Transcript).where(Transcript.project_id == p.id))
         for i, c in enumerate(clips):
             ctx.progress(i / max(1, len(clips)), f"Clip {i + 1}/{len(clips)}")
-            apply_metadata(c, llm.generate_metadata(c.transcript_excerpt, prefs, tr.language if tr else None), fields)
+            apply_metadata(c, trends.generate(p.user_id, c.transcript_excerpt, prefs, tr.language if tr else None,
+                                              research=bool(fields & RESEARCHED)), fields)
             db.commit()
+
+
+RESEARCHED = {"titles", "hashtags"}  # fields similar-Shorts research can influence
 
 
 def apply_metadata(c: Clip, m: dict, fields: set):
@@ -231,7 +236,12 @@ def apply_metadata(c: Clip, m: dict, fields: set):
         c.description = m["description"]
     if "hashtags" in fields:
         c.hashtags = m["hashtags"]
-    c.score_breakdown = {**(c.score_breakdown or {}), "metadata_method": m["method"]}
+    sb = {**(c.score_breakdown or {}), "metadata_method": m["method"]}
+    if fields & RESEARCHED:  # provenance follows the fields it shaped
+        sb.pop("metadata_sources", None)
+        if m.get("sources"):
+            sb["metadata_sources"] = m["sources"]
+    c.score_breakdown = sb
 
 
 # ---------------------------------------------------------------- reframing

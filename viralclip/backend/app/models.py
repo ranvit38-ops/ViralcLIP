@@ -300,3 +300,19 @@ class TikTokAutoPublishRule(Base):
     mode: Mapped[str] = mapped_column(String(10), default="draft")
     privacy_level: Mapped[str | None] = mapped_column(String(30))
     created_at: Mapped[datetime] = _created()
+
+
+# ---------- trend research (public YouTube search results, shared by all users of this install) ----------
+
+class TrendCache(Base):
+    __tablename__ = "trend_cache"
+    key: Mapped[str] = mapped_column(String(300), primary_key=True)  # language + normalized query
+    results: Mapped[list] = mapped_column(JSON, default=list)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ResearchUsage(Base):
+    __tablename__ = "research_usage"
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)  # Pacific date (YouTube's quota day)
+    searches: Mapped[int] = mapped_column(Integer, default=0)
+    quota_exceeded: Mapped[bool] = mapped_column(Boolean, default=False)  # backs off until the next Pacific day

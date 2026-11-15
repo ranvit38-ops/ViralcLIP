@@ -294,7 +294,8 @@ export default function ClipEditor() {
     const t = player.current?.currentTime ?? 0;
     return r2(showRendered ? clip.start + t : t);
   };
-  const metaMethod = clip.score_breakdown?.metadata_method;
+  const metaMethod: string = clip.score_breakdown?.metadata_method ?? "";
+  const similar: { title: string; views: number; url: string }[] = clip.score_breakdown?.metadata_sources?.similar ?? [];
   const presets = sys?.caption_presets ?? {};
 
   return (
@@ -526,9 +527,23 @@ export default function ClipEditor() {
           )}
 
           <Section title="Title, description & hashtags" actions={
-            <span className="text-xs text-muted">{metaMethod === "llm" ? "Written by AI from the transcript" : metaMethod === "basic" ? "Basic suggestions (no AI model configured)" : ""}</span>
+            <span className="text-xs text-muted">{metaMethod.startsWith("llm") ? "Written by AI from the transcript" : metaMethod.startsWith("basic") ? "Basic suggestions (no AI model configured)" : ""}</span>
           }>
             <div className="space-y-4">
+              {similar.length > 0 && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer select-none text-muted hover:text-fg">Inspired by {similar.length} similar Short{similar.length === 1 ? "" : "s"}</summary>
+                  <ul className="mt-2 space-y-1 rounded-md border border-line bg-bg p-3">
+                    {similar.map((v) => (
+                      <li key={v.url} className="flex gap-2">
+                        <a href={v.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate hover:text-fg hover:underline">{v.title}</a>
+                        <span className="shrink-0 tabular-nums text-muted">{v.views.toLocaleString()} views</span>
+                      </li>
+                    ))}
+                    <li className="pt-1 text-[11px] text-muted/80">Recent popular Shorts on YouTube for a similar search. Only their style and hashtags were borrowed; this is not a view guarantee.</li>
+                  </ul>
+                </details>
+              )}
               <Field label={`Title · ${draft.title.length}/100`} hint={clip.title_edited ? "You edited this title, so regenerating will never replace it." : undefined}>
                 <Input value={draft.title} maxLength={100} onChange={(e) => set({ title: e.target.value })} />
               </Field>

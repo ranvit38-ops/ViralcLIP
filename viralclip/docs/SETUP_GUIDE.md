@@ -74,6 +74,31 @@ Open it with Notepad. After editing, **close the ViralClip window and double-cli
 
 ---
 
+## Part 3b: YouTube research key (optional, 5 min)
+
+ViralClip can look up recent Shorts on a similar topic that got a lot of views (official YouTube Data API v3, `search.list` + `videos.list`; no page scraping) and use their **style patterns and hashtags** when writing your titles and hashtags. Titles still only describe what your clip says. This copies patterns from popular videos; it does **not** guarantee views.
+
+**Why a separate project:** quota is per Google Cloud project, 10,000 units a day by default. One search costs about 101 units, one upload about 1,600. If research used your upload project, 20 searches (2,020 units) would cost you one or two uploads a day. A second project has its own 10,000 units, so research never touches upload quota.
+
+1. <https://console.cloud.google.com> → project picker → **New project** → name it `viralclip-research` → **Create**, and select it.
+2. **APIs & Services → Library** → **YouTube Data API v3** → **Enable**.
+3. **APIs & Services → Credentials → Create credentials → API key**. Copy it.
+4. Click the new key → **API restrictions → Restrict key** → tick only **YouTube Data API v3** → **Save**.
+5. In `.env`:
+   ```
+   YOUTUBE_RESEARCH_API_KEY=paste-here
+   ```
+   and restart ViralClip. **Settings → AI** shows "YouTube research: on".
+6. In **Settings → AI**, set **Niche / game** (e.g. `GTA 6`, `Valorant`, `podcast`) so searches match your content.
+
+**Know this:**
+- Up to 90 searches a day with this key (`YOUTUBE_RESEARCH_DAILY_SEARCHES` to change it; 90 × 101 ≈ 9,100 units). Results are cached for 24 hours, so repeated clips on the same topic cost nothing.
+- Without the key, ViralClip borrows your connected channel's quota: at most 20 searches a day, and only while today's uploads (done and queued) leave room. Uploads always come first.
+- If Google reports the quota is used up, research pauses until midnight Pacific time. Metadata is still written as usual, just without the examples.
+- The clip editor shows which Shorts inspired a clip under **"Inspired by N similar Shorts"**.
+
+---
+
 ## Part 4: TikTok keys (20 min)
 
 1. Go to <https://developers.tiktok.com> → log in → **Manage apps → Connect an app**.
