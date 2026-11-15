@@ -9,7 +9,7 @@ import { Badge, ErrorNote, Field, Input, PageHeader, Progress, Section, Select, 
 type S = {
   defaults: { min_len: number; max_len: number; count: number; language: string };
   whisper_model: string | null;
-  metadata: { audience: string; category: string; tone: string; title_style: string; description_length: string; hashtag_count: number; language: string };
+  metadata: { audience: string; category: string; niche: string; tone: string; title_style: string; description_length: string; hashtag_count: number; language: string };
   render: { aspect: string; layout: string; preset: string; position: string; captions: boolean;
             remove_pauses: boolean; remove_retakes: boolean; remove_fillers: boolean; zoom: boolean; hook: boolean };
 };
@@ -17,7 +17,7 @@ type S = {
 const EMPTY: S = {
   defaults: { min_len: 30, max_len: 60, count: 8, language: "" },
   whisper_model: null,
-  metadata: { audience: "", category: "", tone: "", title_style: "", description_length: "short", hashtag_count: 5, language: "" },
+  metadata: { audience: "", category: "", niche: "", tone: "", title_style: "", description_length: "short", hashtag_count: 5, language: "" },
   render: { aspect: "9:16", layout: "auto", preset: "bold", position: "lower", captions: true,
             remove_pauses: true, remove_retakes: true, remove_fillers: true, zoom: true, hook: true },
 };
@@ -150,6 +150,30 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted">For AI titles and ranking, run a local model (e.g. <code>ollama run qwen2.5:7b-instruct</code>) and set <code>LLM_BASE_URL=http://localhost:11434/v1</code> and <code>LLM_MODEL=qwen2.5:7b-instruct</code> on the server.</p>
                 </div>
               )}
+            </div>
+          </div>
+          <h3 className="mb-3 mt-5 text-xs font-semibold uppercase tracking-wide text-muted">Learn from similar Shorts</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Niche / game" hint="Used to find popular Shorts like yours, e.g. GTA 6, Valorant, podcast.">
+              <Input value={s.metadata.niche} placeholder="e.g. GTA 6" maxLength={60} onChange={(e) => upd("metadata", { niche: e.target.value })} />
+            </Field>
+            <div className="space-y-1 text-sm">
+              <span className="text-xs font-medium text-muted">YouTube research</span>
+              {!sys?.research ? null : sys.research.source === "none" ? (
+                <>
+                  <p><Badge tone="amber">off</Badge> <span className="text-muted">titles and hashtags come from the clip alone</span></p>
+                  <p className="text-xs text-muted">Add a YouTube Data API key as <code>YOUTUBE_RESEARCH_API_KEY</code> in the server&apos;s <code>.env</code> (setup guide, Part 3b), or connect a YouTube channel to use a small share of its quota.</p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    <Badge tone={sys.research.available ? "green" : "amber"}>{sys.research.available ? "on" : "paused for today"}</Badge>{" "}
+                    <span className="text-muted">{sys.research.source === "api_key" ? "dedicated API key" : "sharing your channel's upload quota"} · {sys.research.searches_today}/{sys.research.budget} searches today</span>
+                  </p>
+                  {sys.research.source === "oauth" && <p className="text-xs text-muted">Uploads come first; research pauses when they need the quota. A separate <code>YOUTUBE_RESEARCH_API_KEY</code> (setup guide, Part 3b) avoids that.</p>}
+                </>
+              )}
+              <p className="text-xs text-muted">Titles and hashtags copy style patterns from recent popular Shorts on a similar topic, but only describe what your clip says. It is not a view guarantee.</p>
             </div>
           </div>
           <h3 className="mb-3 mt-5 text-xs font-semibold uppercase tracking-wide text-muted">Title, description & hashtag preferences</h3>

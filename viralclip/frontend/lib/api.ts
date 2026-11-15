@@ -85,6 +85,7 @@ export type SystemInfo = {
   whisper_models: string[]; whisper_downloaded: string[]; whisper_default: string; whisper_device: string;
   llm_configured: boolean; llm_model: string | null; caption_presets: Record<string, CaptionStyle>; fonts: string[];
   disk_free: number; disk_total: number; storage_used: number; job_running: boolean;
+  research: { available: boolean; source: "api_key" | "oauth" | "none"; searches_today: number; budget: number };
 };
 
 export const ACTIVE_JOB = ["queued", "running", "cancel_requested"];

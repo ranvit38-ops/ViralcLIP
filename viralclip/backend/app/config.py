@@ -24,6 +24,11 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:3000/api/youtube/callback")
 TOKEN_ENCRYPTION_KEY = os.getenv("TOKEN_ENCRYPTION_KEY", "")
 YOUTUBE_DAILY_UPLOAD_LIMIT = int(os.getenv("YOUTUBE_DAILY_UPLOAD_LIMIT", "6"))
+YOUTUBE_DAILY_QUOTA = int(os.getenv("YOUTUBE_DAILY_QUOTA", "10000"))  # units per Cloud project per Pacific day
+# Trend research (search.list, read-only). A plain API key, ideally from a second Cloud project, so research
+# never eats upload quota. Without it the connected channel's OAuth token is used, with a smaller budget.
+YOUTUBE_RESEARCH_API_KEY = os.getenv("YOUTUBE_RESEARCH_API_KEY", "")
+YOUTUBE_RESEARCH_DAILY_SEARCHES = os.getenv("YOUTUBE_RESEARCH_DAILY_SEARCHES", "")  # default: 90 with key, 20 shared
 
 # Twitch (dev.twitch.tv application). See docs/TWITCH_SETUP.md.
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID", "")

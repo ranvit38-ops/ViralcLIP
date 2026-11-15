@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from . import config, llm
+from . import config, llm, trends
 from .auth import current_user
 from .db import get_db
 from .models import Clip, Job, Project, Transcript, User
@@ -255,11 +255,12 @@ class MetaIn(BaseModel):
 
 @router.post("/clips/{cid}/metadata")
 def regenerate_metadata(cid: int, body: MetaIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    from .pipeline import apply_metadata
+    from .pipeline import RESEARCHED, apply_metadata
     c = owned_clip(db, user, cid)
     tr = db.scalar(select(Transcript).where(Transcript.project_id == c.project_id))
-    apply_metadata(c, llm.generate_metadata(c.transcript_excerpt, (user.settings or {}).get("metadata") or {},
-                                            tr.language if tr else None), set(body.fields))
+    fields = set(body.fields)
+    apply_metadata(c, trends.generate(user.id, c.transcript_excerpt, (user.settings or {}).get("metadata") or {},
+                                      tr.language if tr else None, research=bool(fields & RESEARCHED)), fields)
     db.commit()
     return clip_out(c, db)
 
@@ -398,6 +399,11 @@ def put_settings(body: SettingsIn, user: User = Depends(current_user), db: Sessi
     for k in ("defaults", "metadata", "youtube"):
         if k in s and not isinstance(s[k], dict):
             raise HTTPException(422, f"{k} must be an object")
+    if "metadata" in s and "niche" in s["metadata"]:
+        niche = s["metadata"]["niche"]
+        if not isinstance(niche, str) or len(niche.strip()) > 60 or re.search(r"[\x00-\x1f<>]", niche):
+            raise HTTPException(422, "Niche must be text of at most 60 characters")
+        s["metadata"] = {**s["metadata"], "niche": " ".join(niche.split())}
     import json
     if len(json.dumps(s)) > 20000:
         raise HTTPException(413, "Settings too large")
@@ -427,5 +433,5 @@ def system(user: User = Depends(current_user), db: Session = Depends(get_db)):
         "llm_configured": llm.configured(), "llm_model": os.getenv("LLM_MODEL") if llm.configured() else None,
         "caption_presets": CAPTION_PRESETS, "fonts": fonts[:200],
         "disk_free": du.free, "disk_total": du.total, "storage_used": used, "data_dir_configured": True,
-        "job_running": workers_alive,
+        "job_running": workers_alive, "research": trends.status(db, user.id),
     }
