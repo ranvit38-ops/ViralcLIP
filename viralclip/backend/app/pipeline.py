@@ -133,6 +133,7 @@ def analyze(job_id: int, ctx: Ctx):
         ctx.progress(0.02, "Extracting audio")
         audio = decode_audio(src)
         loud = loudness_per_second(audio)
+        impact = selection.impact_per_second(audio, SR)
         if cached:
             segments, language = cached
         else:
@@ -160,10 +161,10 @@ def analyze(job_id: int, ctx: Ctx):
             db.commit()
             keep_windows = [{"start": c.start, "end": c.end} for c in keep]
 
-        cands = selection.speech_candidates(segments, min_len, max_len, loud)
+        cands = selection.speech_candidates(segments, min_len, max_len, loud, impact)
         speech = sum(s["end"] - s["start"] for s in segments)
         if speech < 0.2 * duration or not cands:
-            cands += selection.loudness_candidates(loud, min_len, max_len)
+            cands += selection.loudness_candidates(loud, min_len, max_len, impact)
         cands = [c for c in cands if not any(selection._overlap(c, k) for k in keep_windows)]
         if llm.configured() and cands:
             # Only send the strongest few to the (slow) LLM.

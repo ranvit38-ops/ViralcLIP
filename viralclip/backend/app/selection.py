@@ -7,6 +7,8 @@ pipeline.py blends its judgement in on top of this.
 import re
 import statistics
 
+import numpy as np
+
 DANGLING = {"and", "but", "so", "because", "which", "or", "also", "then", "anyway", "plus", "though"}
 BACKREF = {"he", "she", "it", "they", "this", "that", "these", "those", "him", "her", "them"}
 FILLERS = {"um", "uh", "erm", "hmm", "like", "basically", "literally"}
@@ -16,7 +18,14 @@ VALUE_WORDS = {"should", "need", "secret", "mistake", "tip", "lesson", "learned"
                "habit", "rule", "trick", "step", "reason", "story", "remember", "taught", "realized", "never"}
 OFFTOPIC = re.compile(r"\b(let me check|check the time|subscribe|like and|see you next|thanks for (watching|listening)|"
                       r"brings me to|my next point|moving on|before we start|sponsor|^anyway\b|^okay\b)\b", re.I)
-WEIGHTS = {"hook": 0.25, "standalone": 0.2, "completeness": 0.15, "value": 0.2, "pacing": 0.08, "energy": 0.12}
+# Reaction / punchline / banter signals and the spectral-flux impact detector below are ported from
+# Clipify (MIT, Copyright (c) 2026 Louise de Sadeleer): SKILL.md Step 1A and scripts/detect_transients.py.
+REACTION = re.compile(r"\b(no way|oh my (god|gosh)|are you (serious|kidding( me)?)|omg|wtf|bro|dude|"
+                      r"holy (shit|crap|cow)|let'?s go+|fuck\w*|shit\w*|damn\w*|crap)\b", re.I)
+SHORT_REACTION = {"what", "wait", "whoa", "wow", "oh", "yo", "huh", "no", "nope", "yes"}  # only as a short sentence
+LAUGH = re.compile(r"\b(ha){2,}h?\b|\bhehe\w*|\blol\b|\blmao\b|[\[(]\s*(laugh|chuckl|gigg)\w*\s*[\])]", re.I)
+WEIGHTS = {"hook": 0.22, "standalone": 0.2, "completeness": 0.14, "value": 0.16, "pacing": 0.07, "energy": 0.11,
+           "reaction": 0.10}
 
 
 def _norm(w: str) -> str:
@@ -41,7 +50,26 @@ def _clamp(x: float) -> float:
     return max(0.0, min(1.0, x))
 
 
-def score_window(sents: list[dict], loud: list[float] | None, loud_ref: float) -> tuple[float, dict, str]:
+def reaction_signals(sents: list[dict]) -> dict:
+    """Comedy/reaction cues: reaction words, laughter, question -> short answer, rapid short-sentence banter."""
+    nwords = [len(s["words"]) for s in sents]
+    hits = sum(len(REACTION.findall(s["text"])) for s in sents)
+    hits += sum(n <= 3 and _norm(s["words"][0]["word"]) in SHORT_REACTION for s, n in zip(sents, nwords) if n)
+    reversal = any(a["text"].endswith("?") and 0 < nb <= 4 and b["text"].endswith((".", "!"))
+                   for a, b, nb in zip(sents, sents[1:], nwords[1:]))
+    # ponytail: no diarization, so "back-and-forth" = 4+ consecutive short sentences with short gaps;
+    # a terse monologue also matches. Use speaker turns if diarization is ever added.
+    run = best = 0
+    for k, s in enumerate(sents):
+        quick = nwords[k] <= 6 and (k == 0 or s["start"] - sents[k - 1]["end"] <= 0.7)
+        run = run + 1 if quick else 0
+        best = max(best, run)
+    return {"hits": hits, "laugh": any(LAUGH.search(s["text"]) for s in sents), "reversal": reversal,
+            "banter": best >= 4}
+
+
+def score_window(sents: list[dict], loud: list[float] | None, loud_ref: float,
+                 impact: list[float] | None = None, impact_ref: float = 0.0) -> tuple[float, dict, str]:
     first, last = sents[0], sents[-1]
     words = [_norm(w["word"]) for s in sents for w in s["words"]]
     fw = [_norm(w["word"]) for w in first["words"]]
@@ -81,14 +109,24 @@ def score_window(sents: list[dict], loud: list[float] | None, loud_ref: float) -
         win = loud[int(first["start"]):max(int(first["start"]) + 1, int(last["end"]))]
         if win:
             energy = _clamp(0.5 + (statistics.fmean(win) / loud_ref - 1) * 1.5)
+    if impact and impact_ref > 0:  # bonus for above-average impact density (gunshots, explosions, hype)
+        win = impact[int(first["start"]):max(int(first["start"]) + 1, int(last["end"]))]
+        if win:
+            energy += 0.3 * _clamp((statistics.fmean(win) / impact_ref - 1) / 2)
+
+    r = reaction_signals(sents)
+    reaction = 0.25 * min(r["hits"], 3) + 0.4 * r["laugh"] + 0.35 * r["reversal"] + 0.4 * r["banter"]
 
     b = {k: round(_clamp(v), 3) for k, v in
-         dict(hook=hook, standalone=standalone, completeness=completeness, value=value, pacing=pacing, energy=energy).items()}
+         dict(hook=hook, standalone=standalone, completeness=completeness, value=value, pacing=pacing, energy=energy,
+              reaction=reaction).items()}
     total = round(100 * sum(WEIGHTS[k] * b[k] for k in WEIGHTS), 1)
 
     good = [n for n, k in (("strong opening", "hook"), ("makes sense on its own", "standalone"),
                            ("ends on a complete thought", "completeness"), ("useful or story-driven content", "value"),
                            ("tight pacing", "pacing"), ("high vocal energy", "energy")) if b[k] >= 0.7]
+    good += [n for n, on in (("big reaction", r["hits"] > 0), ("laughter", r["laugh"]),
+                             ("setup and punchline", r["reversal"]), ("quick back-and-forth", r["banter"])) if on]
     weak = [n for n, k in (("weak opening", "hook"), ("may need earlier context", "standalone"),
                            ("ends abruptly", "completeness")) if b[k] < 0.45]
     reason = ("Strengths: " + ", ".join(good) + "." if good else "No standout strengths.") + \
@@ -111,9 +149,10 @@ def pick(candidates: list[dict], count: int) -> list[dict]:
     return sorted(chosen, key=lambda c: c["start"])
 
 
-def speech_candidates(segments, min_len, max_len, loud=None) -> list[dict]:
+def speech_candidates(segments, min_len, max_len, loud=None, impact=None) -> list[dict]:
     sents = sentences(segments)
     ref = statistics.median(loud) if loud else 0
+    iref = statistics.fmean(impact) if impact else 0
     out = []
     for i in range(len(sents)):
         for j in range(i, len(sents)):
@@ -122,43 +161,83 @@ def speech_candidates(segments, min_len, max_len, loud=None) -> list[dict]:
                 break
             if dur >= min_len:
                 window = sents[i:j + 1]
-                score, breakdown, reason = score_window(window, loud, ref)
+                score, breakdown, reason = score_window(window, loud, ref, impact, iref)
                 out.append({"start": round(max(0, window[0]["start"] - 0.15), 2), "end": round(window[-1]["end"] + 0.25, 2),
                             "text": " ".join(s["text"] for s in window), "score": score,
                             "breakdown": breakdown, "reason": reason, "method": "speech"})
     return out
 
 
-def loudness_candidates(loud: list[float], min_len: float, max_len: float) -> list[dict]:
-    """For footage with little or no speech (e.g. gameplay): windows around the loudest moments.
-    ponytail: loudness-only; add scene-cut density / a vision model if gameplay picks are weak."""
+def impact_per_second(audio: np.ndarray, sr: int = 16000, n_fft: int = 256, hop_s: float = 0.01,
+                      band: tuple[int, int] = (1000, 6000), chunk_frames: int = 6000) -> list[float]:
+    """Per-second density of sharp transients (hits, gunshots, explosions) via spectral flux on the 1-6 kHz band.
+    Each peak counts 1-4 by its strength over the threshold. Steady tones and stationary noise give ~nothing.
+    Processed in 60 s chunks so a 2 h file never materializes a full spectrogram."""
+    audio = np.asarray(audio, np.float32)
+    n_sec, hop = len(audio) // sr, int(sr * hop_s)
+    if n_sec == 0 or len(audio) < n_fft + 4 * hop:
+        return [0.0] * n_sec
+    frames = np.lib.stride_tricks.sliding_window_view(audio, n_fft)[::hop]  # a view, no copy
+    win = np.hanning(n_fft).astype(np.float32)
+    lo, hi = max(1, band[0] * n_fft // sr), min(n_fft // 2 + 1, band[1] * n_fft // sr)
+    flux, prev = [], None
+    for f0 in range(0, len(frames), chunk_frames):
+        mag = np.abs(np.fft.rfft(frames[f0:f0 + chunk_frames] * win, axis=1)[:, lo:hi])
+        d = np.diff(mag if prev is None else np.vstack([prev, mag]), axis=0)
+        flux.append(np.maximum(d, 0).sum(axis=1))
+        prev = mag[-1:]
+    flux = np.concatenate(flux)  # flux[i]: frame i+1 vs frame i
+    # ponytail: one global threshold (4x median flux); use a rolling median if loudness varies a lot within a video.
+    thr = max(4 * float(np.median(flux)), 0.5)
+    local_max = np.lib.stride_tricks.sliding_window_view(np.pad(flux, 3), 7).max(axis=1)  # +-30 ms min gap
+    peaks = np.flatnonzero((flux >= thr) & (flux == local_max))
+    sec = (peaks + 1) * hop // sr
+    keep = sec < n_sec
+    strength = np.minimum(flux[peaks[keep]] / thr, 4.0)
+    return np.bincount(sec[keep], weights=strength, minlength=n_sec)[:n_sec].round(3).tolist()
+
+
+def loudness_candidates(loud: list[float], min_len: float, max_len: float, impact: list[float] | None = None) -> list[dict]:
+    """For footage with little or no speech (e.g. gameplay): windows around the loudest / most impact-dense moments.
+    ponytail: audio-only; add scene-cut density / a vision model if gameplay picks are weak."""
     if not loud:
         return []
     length = (min_len + max_len) / 2
     ref = statistics.median(loud) or 1e-6
     peak = max(loud) or 1e-6
-    out = []
+    imp = list(impact or [])[:len(loud)]
+    imp += [0.0] * (len(loud) - len(imp))
+    imp_trigger = max(2.0, 2 * statistics.median(imp))
+    windows = []
     for t in range(len(loud)):
-        if loud[t] < ref * 1.5:  # only build windows around moments clearly louder than usual
+        # only build windows around moments clearly louder than usual, or with a burst of sharp impacts
+        if loud[t] < ref * 1.5 and imp[t] < imp_trigger:
             continue
         start = max(0.0, t - length * 0.6)
         end = min(len(loud), start + length)
-        if end - start < min_len:
-            continue
+        if end - start >= min_len:
+            windows.append((t, start, end, sum(imp[int(start):int(end)])))
+    best_imp = max((w[3] for w in windows), default=0) or 1e-6
+    out = []
+    for t, start, end, imp_sum in windows:
         win = loud[int(start):int(end)]
         e = _clamp((statistics.fmean(win) - ref) / (peak - ref + 1e-6) * 2)
         p = _clamp((loud[t] - ref) / (peak - ref + 1e-6))
-        score = round(100 * (0.6 * p + 0.4 * e), 1)
+        i = _clamp(imp_sum / best_imp) if impact else 0.0
+        score = round(100 * ((0.3 * p + 0.2 * e + 0.5 * i) if impact else (0.6 * p + 0.4 * e)), 1)
+        reason = ("Picked from a burst of sharp impacts in the audio (hits, gunshots, hype moments; little or no "
+                  "speech detected)." if i >= 0.5 else
+                  "Picked from a loud moment in the audio (little or no speech detected).")
         out.append({"start": round(start, 2), "end": round(end, 2), "text": "", "score": score,
-                    "breakdown": {"peak_loudness": round(p, 3), "sustained_energy": round(e, 3)},
-                    "reason": "Picked from a loud moment in the audio (little or no speech detected).",
-                    "method": "loudness"})
+                    "breakdown": {"peak_loudness": round(p, 3), "sustained_energy": round(e, 3),
+                                  **({"impact_density": round(i, 3)} if impact else {})},
+                    "reason": reason, "method": "loudness"})
     return out
 
 
-def select_clips(segments, duration, min_len, max_len, count, loud=None) -> list[dict]:
+def select_clips(segments, duration, min_len, max_len, count, loud=None, impact=None) -> list[dict]:
     speech = sum(s["end"] - s["start"] for s in segments)
-    cands = speech_candidates(segments, min_len, max_len, loud)
+    cands = speech_candidates(segments, min_len, max_len, loud, impact)
     if speech < 0.2 * duration or not cands:
-        cands += loudness_candidates(loud or [], min_len, max_len)
+        cands += loudness_candidates(loud or [], min_len, max_len, impact)
     return pick(cands, count)
