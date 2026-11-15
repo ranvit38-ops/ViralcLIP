@@ -1,10 +1,11 @@
 "use client";
 
 import { Link2, MonitorPlay, Plus, RefreshCw, Unplug } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { api, fmtDate, type Project } from "@/lib/api";
+import { api, fmtDate } from "@/lib/api";
 import { browserTz, type YtAccount, type YtConfig } from "@/lib/youtube";
+import { LinkImport } from "@/components/link-import";
 import { TimeZoneSelect } from "@/components/schedule";
 import { Badge, Button, Card, Empty, ErrorNote, Field, Input, PageHeader, Loading } from "@/components/ui";
 
@@ -54,27 +55,14 @@ function RuleForm({ acc, onSaved }: { acc: YtAccount; onSaved: () => void }) {
 }
 
 function ImportForm() {
-  const router = useRouter();
-  const [url, setUrl] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   return (
     <Card className="p-4">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-medium"><Link2 size={16} /> Import from one of your videos</h2>
       <p className="mb-3 text-xs text-muted">
-        Paste a link to a video on one of your connected channels. Other channels&apos; videos are refused.
         The original file from your computer is better quality than YouTube&apos;s re-encoded copy, so upload that when you have it.
         Downloads use yt-dlp, which breaks for a while whenever YouTube changes things.
       </p>
-      <form className="flex flex-wrap gap-2" onSubmit={async (e) => {
-        e.preventDefault(); setBusy(true); setError("");
-        try { const p = await api<Project>("/api/youtube/import", { method: "POST", json: { url } }); router.push(`/projects/${p.id}`); }
-        catch (err: any) { setError(err.message); setBusy(false); }
-      }}>
-        <Input className="min-w-0 flex-1" placeholder="https://www.youtube.com/watch?v=…" value={url} onChange={(e) => setUrl(e.target.value)} required aria-label="YouTube video link" />
-        <Button variant="primary" disabled={busy}>{busy ? "Checking…" : "Import"}</Button>
-      </form>
-      <div className="mt-2"><ErrorNote>{error}</ErrorNote></div>
+      <LinkImport placeholder="https://www.youtube.com/watch?v=…" />
     </Card>
   );
 }

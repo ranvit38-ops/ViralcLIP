@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { api, fmtDate, fmtDuration } from "@/lib/api";
+import { LinkImport } from "@/components/link-import";
 import { LENGTH_PRESETS, presetFor } from "@/components/project-panels";
 import { Badge, Button, Card, ErrorNote, Field, Input, PageHeader, SaveBar, Section, Select, Loading } from "@/components/ui";
 
@@ -82,7 +83,6 @@ function Automation() {
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
   const [openVods, setOpenVods] = useState<number | null>(null);
-  const [link, setLink] = useState("");
 
   const load = useCallback(() => api<State>("/api/automation").then((d) => { setSt(d); setS((cur) => cur ?? d.settings); }).catch((e) => setError(e.message)), []);
   useEffect(() => {
@@ -109,11 +109,6 @@ function Automation() {
     if (!confirm(`Disconnect ${a.display_name}? Already imported videos stay.`)) return;
     try { await api(`/api/twitch/accounts/${a.id}`, { method: "DELETE" }); upd({ twitch_account_ids: s!.twitch_account_ids.filter((x) => x !== a.id) }); load(); }
     catch (e: any) { setError(e.message); }
-  }
-  async function importLink(e: React.FormEvent) {
-    e.preventDefault(); setError("");
-    try { const p = await api<{ id: number }>("/api/twitch/import", { method: "POST", json: { url: link } }); setLink(""); setNotice(""); location.href = `/projects/${p.id}`; }
-    catch (err: any) { setError(err.message); }
   }
 
   const preset = presetFor(s.analyze.min_len, s.analyze.max_len);
@@ -182,10 +177,7 @@ function Automation() {
                 </div>
               ))}
               {st.twitch_configured && (
-                <form onSubmit={importLink} className="flex flex-wrap gap-2">
-                  <Input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://www.twitch.tv/videos/123456789" className="max-w-md" aria-label="Twitch VOD link" />
-                  <Button disabled={!link.trim()}>Import VOD</Button>
-                </form>
+                <div className="max-w-xl"><LinkImport placeholder="https://www.twitch.tv/videos/123456789" /></div>
               )}
               <p className="text-xs text-muted">
                 Twitch deletes past broadcasts after 7 days (14–60 for Affiliates, Partners and Turbo). Turn on <span className="text-fg">Settings → Stream → Store past broadcasts</span> on Twitch, and keep ViralClip running so VODs are grabbed in time. Only VODs from accounts you connect can be imported.
