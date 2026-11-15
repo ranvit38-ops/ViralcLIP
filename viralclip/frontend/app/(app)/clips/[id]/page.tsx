@@ -13,7 +13,7 @@ import { Badge, Button, ErrorNote, Field, Input, Section, Select, SaveBar, Statu
 
 type Draft = {
   start: number; end: number; title: string; description: string; hashtags: string[];
-  rs: Omit<RenderSettings, "_rendered_layout" | "_rendered_duration" | "_cuts">;
+  rs: Omit<RenderSettings, "_rendered_layout" | "_rendered_duration" | "_cuts" | "_retakes_cut" | "_fillers_cut">;
 };
 
 const ASPECTS: Record<string, [number, number]> = { "9:16": [1080, 1920], "1:1": [1080, 1080], "4:5": [1080, 1350], "16:9": [1920, 1080] };
@@ -26,7 +26,7 @@ const LAYOUT_HELP: Record<string, string> = {
 const POSITION_TOP: Record<string, string> = { top: "12%", middle: "50%", lower: "76%", bottom: "92%" };
 
 function draftFrom(c: Clip): Draft {
-  const { _rendered_layout, _rendered_duration, _cuts, ...rs } = c.render_settings; // eslint-disable-line @typescript-eslint/no-unused-vars
+  const { _rendered_layout, _rendered_duration, _cuts, _retakes_cut, _fillers_cut, ...rs } = c.render_settings; // eslint-disable-line @typescript-eslint/no-unused-vars
   return { start: c.start, end: c.end, title: c.title, description: c.description, hashtags: [...c.hashtags], rs: structuredClone(rs) };
 }
 
@@ -348,7 +348,9 @@ export default function ClipEditor() {
           {hasRender && clip.render_settings._rendered_duration != null && (
             <p className="text-xs text-muted">
               Rendered {clip.render_settings._rendered_duration.toFixed(1)} s
-              {clip.render_settings._cuts ? ` · ${clip.render_settings._cuts} pause${clip.render_settings._cuts === 1 ? "" : "s"} cut` : ""}
+              {clip.render_settings._cuts ? ` · ${clip.render_settings._cuts} cut${clip.render_settings._cuts === 1 ? "" : "s"}` : ""}
+              {clip.render_settings._retakes_cut ? ` · ${clip.render_settings._retakes_cut} retake${clip.render_settings._retakes_cut === 1 ? "" : "s"} removed` : ""}
+              {clip.render_settings._fillers_cut ? ` · ${clip.render_settings._fillers_cut} um/uh removed` : ""}
               {clip.render_settings._rendered_layout ? ` · ${clip.render_settings._rendered_layout} layout` : ""}
             </p>
           )}
@@ -410,6 +412,8 @@ export default function ClipEditor() {
             <div className="space-y-3">
               {([
                 ["remove_pauses", "Jump cuts", "Cuts out pauses longer than 0.6 s between words, so the clip moves fast."],
+                ["remove_retakes", "Cut repeated takes", "Keeps only the last try when a phrase is said twice in a row (needs jump cuts)."],
+                ["remove_fillers", "Cut um / uh", "Removes filler sounds the transcript picked up (needs jump cuts)."],
                 ["zoom", "Punch-in zoom", "Zooms in a little on every other sentence (face-tracked crops only)."],
                 ["hook", "Hook title", "Shows a title in a box for the first 3 seconds to stop the scroll."],
               ] as const).map(([key, label, help]) => (

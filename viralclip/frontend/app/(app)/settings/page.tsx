@@ -11,7 +11,7 @@ type S = {
   whisper_model: string | null;
   metadata: { audience: string; category: string; tone: string; title_style: string; description_length: string; hashtag_count: number; language: string };
   render: { aspect: string; layout: string; preset: string; position: string; captions: boolean;
-            remove_pauses: boolean; zoom: boolean; hook: boolean };
+            remove_pauses: boolean; remove_retakes: boolean; remove_fillers: boolean; zoom: boolean; hook: boolean };
 };
 
 const EMPTY: S = {
@@ -19,7 +19,7 @@ const EMPTY: S = {
   whisper_model: null,
   metadata: { audience: "", category: "", tone: "", title_style: "", description_length: "short", hashtag_count: 5, language: "" },
   render: { aspect: "9:16", layout: "auto", preset: "bold", position: "lower", captions: true,
-            remove_pauses: true, zoom: true, hook: true },
+            remove_pauses: true, remove_retakes: true, remove_fillers: true, zoom: true, hook: true },
 };
 
 function merge(raw: Record<string, any>): S {
@@ -102,7 +102,7 @@ export default function SettingsPage() {
             </Field>
           </div>
           <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
-            {([["remove_pauses", "Jump cuts (remove pauses)"], ["zoom", "Punch-in zoom"], ["hook", "Hook title (first 3 s)"]] as const).map(([k, label]) => (
+            {([["remove_pauses", "Jump cuts (remove pauses)"], ["remove_retakes", "Cut repeated takes"], ["remove_fillers", "Cut um / uh"], ["zoom", "Punch-in zoom"], ["hook", "Hook title (first 3 s)"]] as const).map(([k, label]) => (
               <label key={k} className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={s.render[k]} onChange={(e) => upd("render", { [k]: e.target.checked })} className="size-4 accent-[var(--color-accent)]" />
                 {label}
