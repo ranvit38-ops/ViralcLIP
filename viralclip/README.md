@@ -6,6 +6,7 @@ No subscriptions, credits or watermarks. Everything runs on your machine.
 - Status of every feature: `DEVELOPMENT_STATUS.md`
 - Design: `ARCHITECTURE.md`
 - YouTube setup: `docs/YOUTUBE_SETUP.md`
+- **Start here: `docs/SETUP_GUIDE.md`** (everything, step by step)
 - Twitch setup: `docs/TWITCH_SETUP.md`
 
 **You are responsible for having the rights to everything you upload, edit and publish.** YouTube link import only accepts videos from channels you've connected.
