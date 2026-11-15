@@ -149,6 +149,7 @@ class YouTubeAccount(Base):
     encrypted_tokens: Mapped[str] = mapped_column(Text)  # Fernet(JSON{access_token, refresh_token})
     token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(20), default="ok")  # ok | reauth_required
+    stats_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # daily view-count sync
     created_at: Mapped[datetime] = _created()
 
 
@@ -186,6 +187,9 @@ class YouTubeUpload(Base):
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
     uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    view_count: Mapped[int | None] = mapped_column(BigInteger)
+    like_count: Mapped[int | None] = mapped_column(BigInteger)
+    stats_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AutoPublishRule(Base):
@@ -226,7 +230,7 @@ class SourceVideo(Base):
     __table_args__ = (UniqueConstraint("user_id", "platform", "external_id"),)
     id: Mapped[int] = _id()
     user_id: Mapped[int] = _fk("users.id")
-    platform: Mapped[str] = mapped_column(String(10))  # twitch | youtube
+    platform: Mapped[str] = mapped_column(String(10))  # twitch | youtube | tiktok
     external_id: Mapped[str] = mapped_column(String(64))
     account_id: Mapped[int | None] = mapped_column(Integer)  # twitch_accounts.id or youtube_accounts.id
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), index=True)
@@ -260,6 +264,8 @@ class TikTokAccount(Base):
     token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(20), default="ok")  # ok | reauth_required
     creator_info: Mapped[dict | None] = mapped_column(JSON)  # last creator_info/query answer (privacy options, max duration)
+    scopes: Mapped[str | None] = mapped_column(Text)  # granted scopes, comma-separated; NULL = connected before 0005
+    stats_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()
 
 
@@ -285,6 +291,10 @@ class TikTokPost(Base):
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    tiktok_video_id: Mapped[str | None] = mapped_column(String(32))  # public post id, once published
+    view_count: Mapped[int | None] = mapped_column(BigInteger)
+    like_count: Mapped[int | None] = mapped_column(BigInteger)
+    stats_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class TikTokAutoPublishRule(Base):

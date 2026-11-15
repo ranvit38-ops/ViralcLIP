@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from . import config, llm, youtube
 from .db import SessionLocal
-from .models import ResearchUsage, TrendCache, YouTubeAccount, YouTubeUpload, now
+from .models import Clip, ResearchUsage, TikTokPost, TrendCache, YouTubeAccount, YouTubeUpload, now
 
 log = logging.getLogger("viralclip.trends")
 
@@ -184,13 +184,67 @@ def find_similar(user_id: int, clip_text: str, niche: str | None, language: str 
         return {"query": q, "items": items} if items else None
 
 
+OWN_MIN_AGE = timedelta(days=3)  # younger posts haven't settled; their view counts mislead
+
+
+def own_top(user_id: int, limit: int = 5) -> list[dict]:
+    """The user's own published clips with the most views (synced daily by youtube/tiktok.sync_stats). No quota."""
+    cutoff = now() - OWN_MIN_AGE
+    with SessionLocal() as db:
+        rows = [("youtube", t, h, v, f"https://www.youtube.com/watch?v={quote(i)}") for t, h, v, i in db.execute(
+            select(Clip.title, Clip.hashtags, YouTubeUpload.view_count, YouTubeUpload.youtube_video_id)
+            .join(Clip, Clip.id == YouTubeUpload.clip_id)
+            .where(YouTubeUpload.user_id == user_id, YouTubeUpload.view_count.is_not(None),
+                   YouTubeUpload.uploaded_at <= cutoff).order_by(YouTubeUpload.view_count.desc()).limit(limit))]
+        # UNVERIFIED: tiktok.com/@/video/<id> without the username; TikTok redirects it to the post.
+        rows += [("tiktok", t, h, v, f"https://www.tiktok.com/@/video/{quote(i)}") for t, h, v, i in db.execute(
+            select(Clip.title, Clip.hashtags, TikTokPost.view_count, TikTokPost.tiktok_video_id)
+            .join(Clip, Clip.id == TikTokPost.clip_id)
+            .where(TikTokPost.user_id == user_id, TikTokPost.view_count.is_not(None), TikTokPost.posted_at <= cutoff)
+            .order_by(TikTokPost.view_count.desc()).limit(limit))]
+    rows = [r for r in rows if (r[1] or "").strip()]
+    rows.sort(key=lambda r: r[3], reverse=True)
+    return [{"title": t, "tags": [], "hashtags": list(dict.fromkeys(filter(None, map(llm._clean_tag, h or []))))[:15],
+             "views": int(v), "url": u, "platform": p, "source": "own"} for p, t, h, v, u in rows[:limit]]
+
+
+def _niche(prefs: dict) -> str:
+    return prefs.get("niche") or (prefs.get("category") if prefs.get("category") not in ("auto", "auto-detect") else "") or ""
+
+
+def examples_for(user_id: int, clip_text: str, prefs: dict, language: str | None) -> list[dict]:
+    """Style examples for metadata: the user's own top clips (source="own", by views, ≥3 days old) first, then
+    similar Shorts from research (source="similar"). Each: {title, hashtags, views, url, platform, source}.
+    Never raises; [] when there is nothing."""
+    out = []
+    try:
+        out += own_top(user_id)
+    except Exception as e:  # noqa: BLE001 - examples are optional
+        log.warning("Own-clip examples failed: %s", e)
+    try:
+        found = find_similar(user_id, clip_text, _niche(prefs), prefs.get("language") or language) if clip_text else None
+    except Exception as e:  # noqa: BLE001 - research is optional
+        log.warning("YouTube research failed, generating without it: %s", e)
+        found = None
+    out += [{**x, "platform": "youtube", "source": "similar"} for x in (found or {}).get("items", [])]
+    return out
+
+
+def sources(items: list[dict], clip_text: str, prefs: dict) -> dict:
+    """score_breakdown.metadata_sources for these examples."""
+    sim = [x for x in items if x["source"] == "similar"]
+    return {"query": query_for(clip_text, _niche(prefs)) if sim else "",
+            "similar": [{k: x[k] for k in ("title", "views", "url")} for x in sim[:5]],
+            "own": [{k: x[k] for k in ("title", "views", "url", "platform")} for x in items if x["source"] == "own"]}
+
+
 def generate(user_id: int, text: str, prefs: dict, language: str | None, research: bool = True) -> dict:
-    """llm.generate_metadata with similar-Shorts examples when research is possible. Research never raises."""
-    examples = None
-    if research and text:
-        niche = prefs.get("niche") or (prefs.get("category") if prefs.get("category") not in ("auto", "auto-detect") else "")
-        try:
-            examples = find_similar(user_id, text, niche, prefs.get("language") or language)
-        except Exception as e:  # noqa: BLE001 - research is optional
-            log.warning("YouTube research failed, generating without it: %s", e)
-    return llm.generate_metadata(text, prefs, language, examples)
+    """llm.generate_metadata steered by examples_for (own winners + similar Shorts). Examples never raise."""
+    items = examples_for(user_id, text, prefs, language) if research and text else []
+    if not items:
+        return llm.generate_metadata(text, prefs, language, None)
+    src = sources(items, text, prefs)
+    m = llm.generate_metadata(text, prefs, language, {"query": src["query"], "items": items})
+    if m.get("sources"):
+        m["sources"] = src
+    return m

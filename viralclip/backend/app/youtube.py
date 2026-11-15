@@ -619,6 +619,10 @@ def stats(user: User = Depends(current_user), db: Session = Depends(get_db)):
         "published": n(YouTubeUpload.schedule_status == "published"),
         "failed": n(YouTubeUpload.upload_status.in_(("failed", "auth_required"))),
         "recent_published": [upload_out(u, db) for u in recent],
+        "top_clips": [{"title": t, "views": v, "url": f"https://www.youtube.com/watch?v={vid}"} for t, v, vid in db.execute(
+            select(Clip.title, YouTubeUpload.view_count, YouTubeUpload.youtube_video_id).join(Clip, Clip.id == YouTubeUpload.clip_id)
+            .where(YouTubeUpload.user_id == user.id, YouTubeUpload.view_count.is_not(None))
+            .order_by(YouTubeUpload.view_count.desc()).limit(5))],
     }
 
 
@@ -1041,8 +1045,55 @@ def sync_published(db: Session) -> None:
     db.commit()
 
 
+def sync_stats(db: Session) -> int:
+    """View/like counts of our uploads: videos.list part=statistics, 50 ids per call (1 quota unit each),
+    at most once per 24 h per channel. Returns how many calls were made."""
+    calls, cutoff = 0, now() - timedelta(hours=24)
+    for acc in list(db.scalars(select(YouTubeAccount).where(YouTubeAccount.status == "ok"))):
+        if acc.stats_synced_at and _aware(acc.stats_synced_at) > cutoff:
+            continue
+        by_id = {u.youtube_video_id: u for u in db.scalars(select(YouTubeUpload).where(
+            YouTubeUpload.account_id == acc.id, YouTubeUpload.upload_status == "uploaded",
+            YouTubeUpload.youtube_video_id.is_not(None)))}
+        if not by_id:
+            continue
+        acc.stats_synced_at = now()  # stamped first: a failing call is retried tomorrow, not every minute
+        db.commit()
+        ids = list(by_id)
+        for i in range(0, len(ids), 50):
+            calls += 1
+            try:
+                r = gapi(db, acc, "GET", f"{API}/videos", params={"part": "statistics", "id": ",".join(ids[i:i + 50])})
+            except (AuthRequired, Transient) as e:
+                log.warning("YouTube stats sync for channel %s stopped: %s", acc.id, type(e).__name__)
+                break
+            if r.status_code != 200:
+                log.warning("YouTube stats sync for channel %s stopped: %s %s", acc.id, r.status_code, _google_error(r)[0])
+                break
+            for it in r.json().get("items", []):
+                if u := by_id.get(it.get("id")):
+                    st = it.get("statistics") or {}
+                    u.view_count = int(st["viewCount"]) if "viewCount" in st else None
+                    u.like_count = int(st["likeCount"]) if "likeCount" in st else None  # hidden likes: absent
+                    u.stats_synced_at = now()
+            db.commit()
+    return calls
+
+
 def tick() -> int:
+    """Called by worker.periodic() under tick_lock only."""
     with SessionLocal() as db:
         n = autopublish_tick(db)
         sync_published(db)
+        for sync in (sync_stats, _tiktok_sync_stats):
+            try:
+                sync(db)
+            except Exception:  # stats are a nice-to-have; never block publishing
+                db.rollback()
+                log.exception("stats sync failed")
         return n
+
+
+def _tiktok_sync_stats(db: Session) -> int:
+    from . import tiktok  # tiktok imports this module
+    return tiktok.sync_stats(db)
