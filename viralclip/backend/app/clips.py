@@ -146,7 +146,7 @@ def validate_render_settings(rs: dict) -> dict:
             if v not in RENDER_KEYS[k]:
                 raise HTTPException(422, f"Invalid {k}")
             out[k] = v
-        elif k in ("captions", "remove_pauses", "zoom", "hook"):
+        elif k in ("captions", "remove_pauses", "remove_retakes", "remove_fillers", "zoom", "hook"):
             out[k] = bool(v)
         elif k == "hook_text":
             out[k] = (str(v).strip()[:100] or None) if v is not None else None
@@ -196,8 +196,7 @@ def update_clip(cid: int, body: ClipUpdate, user: User = Depends(current_user), 
         c.hashtags = list(dict.fromkeys(t for t in tags if t))
     if changes.get("render_settings") is not None:
         new = {**(c.render_settings or {}), **validate_render_settings(changes["render_settings"])}
-        for k in ("_rendered_layout", "_rendered_duration", "_cuts"):
-            new.pop(k, None)
+        new = {k: v for k, v in new.items() if not k.startswith("_")}  # render outputs (_cuts, _retakes_cut, ...)
         if new != {k: v for k, v in (c.render_settings or {}).items() if not k.startswith("_")}:
             c.render_settings, visual = new, True
     if "caption_overrides" in changes and changes["caption_overrides"] is not None:

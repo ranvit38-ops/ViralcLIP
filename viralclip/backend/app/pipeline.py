@@ -35,6 +35,8 @@ CAPTION_PRESETS = {
 DEFAULT_RENDER = {"aspect": "9:16", "layout": "auto", "crop_x": None, "captions": True, "preset": "bold",
                   "position": "lower", "style": {},
                   "remove_pauses": True,   # jump cuts: drop silences longer than PAUSE between words
+                  "remove_retakes": True,  # ...and the earlier take of an immediately repeated phrase
+                  "remove_fillers": True,  # ...and standalone um/uh/erm/hmm
                   "zoom": True,            # punch-in on alternating sentences (talking-head crops only)
                   "hook": True,            # title shown in a box for the first HOOK_SECONDS
                   "hook_text": None}       # None = use the clip title
@@ -51,8 +53,9 @@ def render_settings(clip: Clip, user_settings: dict | None = None) -> dict:
 
 # ---------------------------------------------------------------- audio / transcription
 
-def decode_audio(src: Path) -> np.ndarray:
-    r = subprocess.run([config.FFMPEG, "-v", "error", "-i", str(src), "-vn", "-ac", "1", "-ar", str(SR),
+def decode_audio(src: Path, start: float = 0.0, dur: float | None = None) -> np.ndarray:
+    rng = ["-ss", f"{start:.3f}", "-t", f"{dur:.3f}"] if dur is not None else []
+    r = subprocess.run([config.FFMPEG, "-v", "error", *rng, "-i", str(src), "-vn", "-ac", "1", "-ar", str(SR),
                         "-f", "f32le", "pipe:"], capture_output=True, timeout=3600)
     if r.returncode != 0:
         raise UserError("Could not extract audio from this video.")
@@ -232,27 +235,124 @@ def apply_metadata(c: Clip, m: dict, fields: set):
 
 # ---------------------------------------------------------------- reframing
 
-def _faces(src: Path, start: float, dur: float, w: int, h: int, fps: float = 2.0):
-    """Largest face per sampled frame -> [(t, cx, face_h, cy) as fractions | (t, None, 0, None)]."""
+MOTION_FPS, DETECT_EVERY, CELL = 10, 5, 8  # motion at 10 fps, faces on every 5th frame (2 fps), 8 px grid
+
+
+def _faces(src: Path, start: float, dur: float, w: int, h: int):
+    """One decode at MOTION_FPS (480 px wide, gray). Returns
+    - samples: largest face per detection frame -> [(t, cx, face_h, cy) as fractions | (t, None, 0, None)]
+    - dets: every face per detection frame -> [(t, [(x, y, w, h) as fractions], ...)]
+    - motion: per motion frame, mean |frame - previous frame| on a CELL-px grid (float16, T x gh x gw), so
+      mouth energy can be read for any box afterwards without keeping the frames (600 s clip ~ 50 MB)."""
     import cv2
     sw = 480
     sh = int(round(h * sw / w / 2) * 2)
-    r = subprocess.run([config.FFMPEG, "-v", "error", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(src),
-                        "-vf", f"fps={fps},scale={sw}:{sh},format=gray", "-f", "rawvideo", "pipe:"],
-                       capture_output=True, timeout=600)
-    frames = np.frombuffer(r.stdout, np.uint8)
-    n = len(frames) // (sw * sh)
+    gh, gw = sh // CELL, sw // CELL
     det = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    out = []
-    for i in range(n):
-        f = frames[i * sw * sh:(i + 1) * sw * sh].reshape(sh, sw)
-        faces = det.detectMultiScale(f, scaleFactor=1.1, minNeighbors=6, minSize=(sh // 12, sh // 12))
-        if len(faces):
-            x, y, fw, fh = max(faces, key=lambda b: b[2] * b[3])
-            out.append((i / fps, (x + fw / 2) / sw, fh / sh, (y + fh / 2) / sh))
+    proc = subprocess.Popen([config.FFMPEG, "-v", "error", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(src),
+                             "-vf", f"fps={MOTION_FPS},scale={sw}:{sh},format=gray", "-f", "rawvideo", "pipe:"],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    samples, dets, motion, prev, i = [], [], [], None, 0
+    try:
+        while len(buf := proc.stdout.read(sw * sh)) == sw * sh:
+            f = np.frombuffer(buf, np.uint8).reshape(sh, sw)
+            cur = f[:gh * CELL, :gw * CELL].astype(np.int16)
+            motion.append(np.zeros((gh, gw), np.float16) if prev is None else
+                          np.abs(cur - prev).reshape(gh, CELL, gw, CELL).mean(axis=(1, 3)).astype(np.float16))
+            prev = cur
+            if i % DETECT_EVERY == 0:
+                t = i / MOTION_FPS
+                faces = det.detectMultiScale(f, scaleFactor=1.1, minNeighbors=6, minSize=(sh // 12, sh // 12))
+                dets.append((t, [(x / sw, y / sh, fw / sw, fh / sh) for x, y, fw, fh in faces]))
+                if len(faces):
+                    x, y, fw, fh = max(faces, key=lambda b: b[2] * b[3])
+                    samples.append((t, (x + fw / 2) / sw, fh / sh, (y + fh / 2) / sh))
+                else:
+                    samples.append((t, None, 0.0, None))
+            i += 1
+    finally:
+        proc.kill()
+        proc.wait()
+    if len(motion) > 1:
+        motion[0] = motion[1]  # the first frame has nothing to diff against
+    return samples, dets, (np.stack(motion) if motion else np.zeros((0, gh, gw), np.float16))
+
+
+def people(dets, min_share: float = 0.3, gap: float = 0.06) -> list[tuple[float, float, float, float]]:
+    """Cluster face boxes into stable people by horizontal position: sort centers, split where two
+    neighbours are > `gap` of the frame width apart, keep clusters seen in >= `min_share` of frames.
+    Returns each person's median box (x, y, w, h as fractions), left to right.
+    ponytail: one static box per person; track the box over time if people walk around a lot."""
+    boxes = sorted((b for _, bs in dets for b in bs), key=lambda b: b[0] + b[2] / 2)
+    groups, cur = [], []
+    for b in boxes:
+        if cur and b[0] + b[2] / 2 - (cur[-1][0] + cur[-1][2] / 2) > gap:
+            groups.append(cur)
+            cur = []
+        cur.append(b)
+    if cur:
+        groups.append(cur)
+    need = min_share * max(1, len(dets))
+    return [tuple(float(np.median([b[k] for b in g])) for k in range(4)) for g in groups if len(g) >= need]
+
+
+def mouth_energy(motion: np.ndarray, box) -> np.ndarray:
+    """Frame-difference energy over the lower 40% of a face box (mouth + chin), per motion frame."""
+    x, y, w, h = box
+    gh, gw = motion.shape[1:]
+    r0, r1 = int((y + 0.6 * h) * gh), int(np.ceil((y + h) * gh))
+    c0, c1 = int((x + 0.15 * w) * gw), int(np.ceil((x + 0.85 * w) * gw))
+    r0, c0 = min(r0, gh - 1), min(c0, gw - 1)
+    return motion[:, r0:max(r1, r0 + 1), c0:max(c1, c0 + 1)].astype(np.float32).mean(axis=(1, 2))
+
+
+# Speaker switching ported from clipify scripts/analyze.py (MIT, (c) 2026 Louise de Sadeleer):
+# normalize each person's motion, moving-average smooth, switch only when another person beats the
+# current one by MARGIN, then fold segments shorter than MIN_DWELL into the previous speaker.
+# Generalized from 2 hand-drawn ROIs to N detected people; see THIRD_PARTY_NOTICES.md.
+MARGIN, MIN_DWELL, SMOOTH_S = 1.15, 1.0, 0.5
+
+
+def speaker_segments(energy: np.ndarray, fps: float) -> list[tuple[float, float, int]]:
+    """energy: people x frames -> [(start, end, person)] with hysteresis and minimum dwell."""
+    e = np.asarray(energy, np.float64)
+    means = e.mean(axis=1)
+    # Per-person normalization (clipify divides by the mean). Floor the divisor at half the average
+    # so someone who never talks doesn't get their noise blown up to the speaker's level.
+    e = e / np.maximum(means, 0.5 * means.mean() + 1e-9)[:, None]
+    win = max(1, int(round(SMOOTH_S * fps)) | 1)
+    k = np.ones(win)
+    s = np.array([np.convolve(r, k, "same") for r in e]) / np.convolve(np.ones(e.shape[1]), k, "same")
+    cur, labels = int(np.argmax(s[:, 0])), []
+    for i in range(s.shape[1]):
+        best = int(np.argmax(s[:, i]))
+        if best != cur and s[best, i] > s[cur, i] * MARGIN:
+            cur = best
+        labels.append(cur)
+    segs = []
+    for i, p in enumerate(labels):
+        if segs and segs[-1][2] == p:
+            segs[-1][1] = (i + 1) / fps
         else:
-            out.append((i / fps, None, 0.0, None))
-    return out
+            segs.append([i / fps, (i + 1) / fps, p])
+    merged = []
+    for seg in segs:  # short interjections become part of whoever spoke before
+        if merged and seg[1] - seg[0] < MIN_DWELL:
+            merged[-1][1] = seg[1]
+        elif merged and merged[-1][2] == seg[2]:
+            merged[-1][1] = seg[1]
+        else:
+            merged.append(seg)
+    return [(round(a, 2), round(b, 2), p) for a, b, p in merged]
+
+
+def speaker_track(dets, motion) -> list[tuple[float, float]] | None:
+    """Crop track that follows whoever is talking, or None when fewer than two stable people are on screen."""
+    ppl = people(dets)
+    if len(ppl) < 2 or len(motion) < 2:
+        return None
+    segs = speaker_segments(np.stack([mouth_energy(motion, b) for b in ppl]), MOTION_FPS)
+    return [(a, ppl[p][0] + ppl[p][2] / 2) for a, _, p in segs]
 
 
 def crop_track(samples, min_shift: float = 0.12, hold: int = 2) -> list[tuple[float, float]]:
@@ -434,18 +534,106 @@ def render(job_id: int, ctx: Ctx):
 
 # ---------------------------------------------------------------- jump cuts / time remapping
 
-def keep_segments(words: list[dict], dur: float, pause: float = PAUSE) -> list[tuple[float, float]]:
-    """Intervals (clip-relative) to keep so that silences longer than `pause` are cut out."""
-    if not words:
+def _norm_word(w: str) -> str:
+    return re.sub(r"[\W_]+", "", w.lower())
+
+
+# Standalone hesitations as Whisper spells them ("Um,", "uhh", "Hmm...", "erm"). Not "like"/"so": those carry meaning.
+FILLER = re.compile(r"u+m+|u+h+|e+r+m*|h+m+|m{2,}")
+
+
+def find_fillers(words: list[dict]) -> set[int]:
+    return {i for i, w in enumerate(words) if FILLER.fullmatch(_norm_word(w["word"]))}
+
+
+MAX_RETAKE_WORDS = 12
+
+
+def find_retakes(words: list[dict], skip: set[int] = frozenset()) -> list[tuple[int, int]]:
+    """Ported from MakeMyClip editor/src/timeline/transcript.ts findRetakes (MIT, (c) 2026 MakeMyClip):
+    a phrase of 2..12 words said again immediately ("I want to show, I want to show you") -> the EARLIER
+    take as an inclusive word-index range, longest match first. A run of one word ("no no no") is
+    emphasis and kept. Words in `skip` (fillers being cut) are ignored, so "I think, um, I think" matches."""
+    idx = [i for i in range(len(words)) if i not in skip]
+    norm = [_norm_word(words[i]["word"]) for i in idx]
+    out, i = [], 0
+    while i < len(idx):
+        matched = 0
+        for n in range(min(MAX_RETAKE_WORDS, (len(idx) - i) // 2), 1, -1):
+            a, b = norm[i:i + n], norm[i + n:i + 2 * n]
+            if a == b and "" not in a and len(set(a)) > 1:
+                matched = n
+                break
+        if matched:
+            out.append((idx[i], idx[i + matched - 1]))
+            i += matched
+        else:
+            i += 1
+    return out
+
+
+def keep_segments(words: list[dict], dur: float, pause: float = PAUSE,
+                  drop: set[int] = frozenset()) -> list[tuple[float, float]]:
+    """Intervals (clip-relative) to keep so that silences longer than `pause` and the words in `drop`
+    (retakes, fillers) are cut out. Padding around kept words never reaches into a dropped word."""
+    kept = [(i, w) for i, w in enumerate(words) if i not in drop]
+    if not kept:
         return [(0.0, dur)]
     pad_after, pad_before = 0.15, 0.08
-    segs = [[max(0.0, words[0]["start"] - (pad_before if words[0]["start"] > pause else words[0]["start"])), None]]
-    for prev, nxt in zip(words, words[1:]):
-        if nxt["start"] - prev["end"] > pause:
+    i0, w0 = kept[0]
+    lead = 0.0 if w0["start"] <= pause and i0 == 0 else w0["start"] - pad_before
+    if i0 > 0:
+        lead = max(lead, words[i0 - 1]["end"])
+    segs = [[max(0.0, lead), None]]
+    for (pi, prev), (ni, nxt) in zip(kept, kept[1:]):
+        if ni > pi + 1:  # dropped words in between: cut from the end of prev to the start of nxt
+            segs[-1][1] = min(prev["end"] + pad_after, words[pi + 1]["start"])
+            segs.append([max(nxt["start"] - pad_before, words[ni - 1]["end"]), None])
+        elif nxt["start"] - prev["end"] > pause:
             segs[-1][1] = prev["end"] + pad_after
             segs.append([nxt["start"] - pad_before, None])
-    segs[-1][1] = min(dur, words[-1]["end"] + 0.35)
+    il, wl = kept[-1]
+    segs[-1][1] = min(dur, wl["end"] + 0.35, words[il + 1]["start"] if il + 1 < len(words) else dur)
     return [(round(a, 3), round(b, 3)) for a, b in segs if b - a > 0.05]
+
+
+SNAP_RANGE, SNAP_WIN = 0.12, 0.02
+
+
+def snap_cuts(keep: list[tuple[float, float]], words: list[dict], audio: np.ndarray, sr: int = SR):
+    """Cut check, after MakeMyClip editor/src/timeline/review.ts (MIT, (c) 2026 MakeMyClip): that review
+    flags joins whose edge audio peaks above -30 dBFS; here we fix them instead. Each interior join edge
+    moves to the quietest 20 ms point within +-120 ms, never into a word's body (Whisper timings)."""
+    if len(keep) < 2 or not len(audio):
+        return keep
+    sq = np.concatenate([[0.0], np.cumsum(audio.astype(np.float64) ** 2)])
+    half, step = int(SNAP_WIN * sr / 2), int(0.005 * sr)
+    bodies = sorted((w["start"], w["end"]) for w in words)
+
+    def snap(t: float) -> float:
+        lo, hi = t - SNAP_RANGE, t + SNAP_RANGE
+        for a, b in bodies:
+            if a < t < b:
+                return t  # already inside a word (overlapping timings): leave it alone
+            if b <= t:
+                lo = max(lo, b)
+            elif a >= t:
+                hi = min(hi, a)
+                break
+        c = np.arange(int(max(lo * sr, half)), int(min(hi * sr, len(audio) - half)) + 1, step)
+        if not len(c):
+            return t
+        energy = (sq[c + half] - sq[c - half]) / (2 * half)
+        # quietest window; near-ties (within 10%, or digital silence) go to the one nearest the original cut
+        near = c[energy <= energy.min() * 1.1 + 1e-8]
+        return round(float(near[np.argmin(np.abs(near - t * sr))]) / sr, 3)
+
+    out = [list(k) for k in keep]
+    for i in range(len(out) - 1):
+        b, a = snap(out[i][1]), snap(out[i + 1][0])
+        if out[i][0] < b < a < out[i + 1][1]:
+            out[i][1], out[i + 1][0] = b, a
+    return [tuple(k) for k in out]
 
 
 def remap(t: float, keep: list[tuple[float, float]]) -> float:
@@ -460,11 +648,20 @@ def remap(t: float, keep: list[tuple[float, float]]) -> float:
     return acc
 
 
+def is_kept(w: dict, keep) -> bool:
+    mid = (w["start"] + w["end"]) / 2
+    return any(a <= mid <= b for a, b in keep)
+
+
 def remap_lines(lines: list[dict], keep) -> list[dict]:
+    """Move lines onto the jump-cut timeline; words that were cut out (retakes, fillers) disappear."""
     out = []
     for ln in lines:
-        ws = [{**w, "start": remap(w["start"], keep), "end": remap(w["end"], keep)} for w in ln["words"]]
-        out.append({**ln, "start": remap(ln["start"], keep), "end": remap(ln["end"], keep), "words": ws})
+        ws = [{**w, "start": remap(w["start"], keep), "end": remap(w["end"], keep)}
+              for w in ln["words"] if is_kept(w, keep)]
+        if ws:
+            out.append({**ln, "start": ws[0]["start"], "end": ws[-1]["end"],
+                        "text": " ".join(w["word"] for w in ws), "words": ws})
     return out
 
 
@@ -508,9 +705,15 @@ def _render(ctx, src, pid, cid, start, end, sw, sh, fps, st, segments, overrides
     tmp, final = out_dir / f"{cid}.tmp.mp4", out_dir / f"{cid}.mp4"
     out_fps = min(fps or 30, 60)
 
-    # --- timeline: jump cuts from word timings
+    # --- timeline: jump cuts from word timings (pauses, then retakes and fillers)
     words = clip_words(segments, start, end)
-    keep = keep_segments(words, dur) if st.get("remove_pauses") else [(0.0, dur)]
+    keep, retakes, fillers = [(0.0, dur)], [], set()
+    if st.get("remove_pauses"):
+        fillers = find_fillers(words) if st.get("remove_fillers") else set()
+        retakes = find_retakes(words, fillers) if st.get("remove_retakes") else []
+        keep = keep_segments(words, dur, drop=fillers | {i for a, b in retakes for i in range(a, b + 1)})
+        if has_audio and len(keep) > 1:
+            keep = snap_cuts(keep, words, decode_audio(src, start, dur))
     new_dur = sum(b - a for a, b in keep)
 
     # --- framing
@@ -525,7 +728,7 @@ def _render(ctx, src, pid, cid, start, end, sw, sh, fps, st, segments, overrides
             track, layout = [(0.0, float(st["crop_x"]))], "crop"
         else:
             ctx.progress(0.03, "Finding faces")
-            samples = _faces(src, start, dur, sw, sh)
+            samples, dets, motion = _faces(src, start, dur, sw, sh)
             hits = [s for s in samples if s[1] is not None]
             big = bool(hits) and float(np.median([s[2] for s in hits])) >= 0.12
             if dst_ar < 1:
@@ -538,14 +741,18 @@ def _render(ctx, src, pid, cid, start, end, sw, sh, fps, st, segments, overrides
                 layout = "fit"  # asked for split screen but no facecam found
             if layout == "crop":
                 # Re-frame once the face drifts ~15% of the *output* width (a 9:16 crop is ~1/3 of the source).
-                track = [(remap(t, keep), x) for t, x in crop_track(samples, min_shift=max(0.04, 0.15 * crop_w / sw))]
+                # Two or more people on screen -> follow whoever is talking; one person -> follow the face.
+                speakers = speaker_track(dets, motion)
+                track = [(remap(t, keep), x) for t, x in
+                         speakers or crop_track(samples, min_shift=max(0.04, 0.15 * crop_w / sw))]
     elif layout in ("auto", "stream"):
         layout = "fit" if abs(src_ar - dst_ar) > 0.01 else "crop"
 
     # --- captions / hook (times on the new timeline)
     lines = []
     if st["captions"]:
-        lines = lines_from_overrides(overrides) if overrides else caption_lines(words, int(st["style"]["words"]))
+        lines = lines_from_overrides(overrides) if overrides else \
+            caption_lines([w for w in words if is_kept(w, keep)], int(st["style"]["words"]))
         lines = remap_lines(lines, keep)
     hook = (st.get("hook_text") or title or "").strip() if st.get("hook") else ""
     position = st["position"]
@@ -620,5 +827,6 @@ def _render(ctx, src, pid, cid, start, end, sw, sh, fps, st, segments, overrides
             c.render_status, c.render_path = "done", f"clips/{cid}.mp4"
             c.thumbnail_path = f"clips/{cid}.jpg" if (out_dir / f"{cid}.jpg").exists() else None
             c.render_settings = {**(c.render_settings or {}), "_rendered_layout": layout,
-                                 "_rendered_duration": round(new_dur, 2), "_cuts": len(keep) - 1}
+                                 "_rendered_duration": round(new_dur, 2), "_cuts": len(keep) - 1,
+                                 "_retakes_cut": len(retakes), "_fillers_cut": len(fillers)}
             db.commit()

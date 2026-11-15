@@ -217,15 +217,19 @@ def _face_video(name, overlay_filter):
     return out
 
 
-def _render_direct(src, layout, monkeypatch, tmp_path):
+def _render_direct(src, layout, monkeypatch, tmp_path, words=None, end=6, **rs):
     from app import config as cfg
     monkeypatch.setattr(cfg, "DATA_DIR", tmp_path)
+    clip = type("Clip", (), {"render_settings": {}})()  # captures what _render writes back
     monkeypatch.setattr(pipeline, "SessionLocal", lambda: type("S", (), {
-        "__enter__": lambda s: s, "__exit__": lambda s, *a: None, "get": lambda s, *a: None})())
-    st = pipeline.render_settings(type("C", (), {"render_settings": {"layout": layout}})())
-    words = [{"start": 0.3, "end": 0.8, "word": "Hello"}, {"start": 0.9, "end": 1.4, "word": "there."},
-             {"start": 3.4, "end": 3.9, "word": "Big"}, {"start": 4.0, "end": 4.6, "word": "moment."}]
-    pipeline._render(_Ctx(), src, 1, 1, 0, 6, 1920, 1080, 30, st, [{"words": words}], [], "My hook title", True)
+        "__enter__": lambda s: s, "__exit__": lambda s, *a: None, "get": lambda s, *a: clip,
+        "commit": lambda s: None})())
+    st = pipeline.render_settings(type("C", (), {"render_settings": {"layout": layout, **rs}})())
+    if words is None:
+        words = [{"start": 0.3, "end": 0.8, "word": "Hello"}, {"start": 0.9, "end": 1.4, "word": "there."},
+                 {"start": 3.4, "end": 3.9, "word": "Big"}, {"start": 4.0, "end": 4.6, "word": "moment."}]
+    pipeline._render(_Ctx(), src, 1, 1, 0, end, 1920, 1080, 30, st, [{"words": words}], [], "My hook title", True)
+    _render_direct.settings = clip.render_settings
     return tmp_path / "projects" / "1" / "clips" / "1.mp4"
 
 
@@ -266,3 +270,120 @@ def test_job_dead_too_often_releases_clip_and_project():
     with SessionLocal() as db:
         assert db.get(Clip, cid).render_status == "failed"
         assert db.get(Project, pid).status == "ready"
+
+
+# ---------------------------------------------------------------- retakes, fillers, cut snapping, active speaker
+
+def _words(text, t0=0.0, step=0.4):
+    return [{"start": round(t0 + i * step, 2), "end": round(t0 + i * step + 0.3, 2), "word": w}
+            for i, w in enumerate(text.split())]
+
+
+def test_retakes_and_fillers():
+    w = _words("I want to show, I want to show you this.")
+    assert pipeline.find_retakes(w) == [(0, 3)]  # the earlier take is cut, the later one kept
+    assert pipeline.find_retakes(_words("No no no, that is not it.")) == []  # one-word run = emphasis
+    assert pipeline.find_retakes(_words("We tried it and it worked for us.")) == []
+    assert pipeline.find_retakes(_words("it was it was")) == [(0, 1)]  # two words is the minimum
+    um = _words("I think, um, I think so.")
+    fill = pipeline.find_fillers(um)
+    assert fill == {2} and pipeline.find_retakes(um, fill) == [(0, 1)]  # a filler doesn't hide a retake
+    assert pipeline.find_fillers(_words("Um, so like, uh, I mean Hmm... erm umm")) == {0, 3, 6, 7, 8}
+    assert pipeline.find_fillers(_words("umbrella uh-oh hum")) == set()
+
+
+def test_keep_segments_cut_retakes_and_fillers():
+    w = _words("I want to show, I want to show you this.")  # 0.4 s per word, no pauses
+    keep = pipeline.keep_segments(w, 4.0, drop={0, 1, 2, 3})
+    assert len(keep) == 1 and w[3]["end"] <= keep[0][0] <= w[4]["start"]  # starts after the cut take
+    w = _words("So, um, this works.")
+    keep = pipeline.keep_segments(w, 2.0, drop={1})
+    assert len(keep) == 2 and keep[0][1] <= w[1]["start"] and keep[1][0] >= w[1]["end"]
+    assert keep[0][0] == 0.0 and keep[1][1] <= 2.0
+    # captions: the cut word is gone, the rest move up on the new timeline
+    lines = pipeline.remap_lines(pipeline.caption_lines(w, 6), keep)
+    assert [x["word"] for ln in lines for x in ln["words"]] == ["So,", "this", "works."]
+    assert " ".join(ln["text"] for ln in lines) == "So, this works."
+    assert lines[-1]["words"][-2]["start"] == pytest.approx(w[2]["start"] - (keep[1][0] - keep[0][1]))
+    assert pipeline.keep_segments(w, 2.0, drop={0, 1, 2, 3}) == [(0.0, 2.0)]  # nothing left: keep everything
+
+
+def test_snap_cuts_to_quiet_point():
+    import numpy as np
+    sr = pipeline.SR
+    t = np.arange(int(3 * sr)) / sr
+    audio = (0.5 * np.sin(2 * np.pi * 250 * t)).astype(np.float32)
+    audio[int(1.05 * sr):int(1.08 * sr)] = 0  # a 30 ms quiet gap 50-80 ms after the planned cut
+    words = [{"start": 0.2, "end": 0.9, "word": "a"}, {"start": 1.3, "end": 2.0, "word": "b"}]
+    keep = [(0.0, 1.0), (1.25, 3.0)]
+    out = pipeline.snap_cuts(keep, words, audio, sr)
+    assert 1.05 <= out[0][1] <= 1.08  # moved into the quiet gap
+    assert out[1][0] == pytest.approx(1.25, abs=0.003)  # evenly loud (whole 250 Hz periods): nearest the original
+    # never into a word body: a quiet gap inside word "a" is ignored
+    audio2 = (0.5 * np.sin(2 * np.pi * 250 * t)).astype(np.float32)
+    audio2[int(0.85 * sr):int(0.88 * sr)] = 0
+    assert pipeline.snap_cuts(keep, words, audio2, sr)[0][1] >= 0.9
+
+
+def test_speaker_switching_with_hysteresis():
+    import numpy as np
+    fps, n = 10, 80
+    rng = np.random.default_rng(0)
+    a = 0.3 + 0.1 * rng.random(n)
+    b = 0.3 + 0.1 * rng.random(n)
+    a[:40] += 2.0  # A talks for 4 s, then B
+    b[40:] += 2.0
+    b[15:19] += 3.0  # B's 0.4 s interjection while A talks: too short to cut to
+    segs = pipeline.speaker_segments(np.stack([a, b]), fps)
+    assert [p for *_, p in segs] == [0, 1] and 3.8 <= segs[1][0] <= 4.4
+    # similar levels (within MARGIN): no flapping
+    flat = np.stack([1.0 + 0.05 * rng.random(n), 1.0 + 0.05 * rng.random(n)])
+    assert len(pipeline.speaker_segments(flat, fps)) == 1
+    # someone who never talks doesn't win on normalized noise
+    quiet = np.stack([2.0 + rng.random(n), 0.05 + 0.02 * rng.random(n)])
+    assert [p for *_, p in pipeline.speaker_segments(quiet, fps)] == [0]
+    # two clusters of faces -> two people; a one-off false detection is ignored
+    dets = [(i / 2, [(0.2, 0.4, 0.1, 0.18), (0.7, 0.4, 0.1, 0.18)] + ([(0.45, 0.1, 0.05, 0.08)] if i == 3 else []))
+            for i in range(10)]
+    ppl = pipeline.people(dets)
+    assert len(ppl) == 2 and ppl[0][0] == pytest.approx(0.2) and ppl[1][0] == pytest.approx(0.7)
+    assert pipeline.speaker_track([(0, [(0.4, 0.4, 0.1, 0.18)])] * 4, np.zeros((20, 33, 60))) is None  # one person
+
+
+def _two_person_video():
+    # Lena on the left, mirrored Lena on the right; a patch of changing noise over the left mouth for 0-3 s,
+    # then over the right mouth for 3-6 s.
+    return _face_video("twoperson.mp4",
+                       "[0:v]drawbox=c=0x606060:t=fill[bg];[1:v]scale=520:520,split[a][b];[b]hflip[bm];"
+                       "[bg][a]overlay=180:280[t1];[t1][bm]overlay=1220:280[t2];"
+                       "color=c=0x806060:s=90x40:r=30,noise=alls=100:allf=t+u,split[n1][n2];"
+                       "[t2][n1]overlay=405:615:enable='lt(t,3)'[t3];[t3][n2]overlay=1425:615:enable='gte(t,3)'[v]")
+
+
+def _gray(path, t, vf=""):
+    import numpy as np
+    r = subprocess.run(["ffmpeg", "-v", "error", "-ss", str(t), "-i", str(path), "-frames:v", "1",
+                        "-vf", f"{vf}scale=54:96,format=gray", "-f", "rawvideo", "pipe:"], capture_output=True, check=True)
+    return np.frombuffer(r.stdout, np.uint8).astype(float)
+
+
+def test_two_person_crop_follows_active_speaker(monkeypatch, tmp_path):
+    src = _two_person_video()
+    out = _render_direct(src, "auto", monkeypatch, tmp_path, words=[], captions=False, hook=False)
+    assert _render_direct.settings["_rendered_layout"] == "crop"
+    # a 9:16 crop of 1080p is 606 px wide; the faces are centred at ~x=490 (left) and ~x=1430 (right)
+    left, right = "crop=606:1080:186:0,", "crop=606:1080:1131:0,"
+    for t, want in ((1.5, left), (4.5, right)):
+        got = _gray(out, t)
+        err = {v: float(((got - _gray(src, t, v)) ** 2).mean()) for v in (left, right)}
+        assert min(err, key=err.get) == want and err[want] < 0.25 * max(err.values()), (t, err)
+
+
+def test_render_cuts_retakes_and_fillers(monkeypatch, tmp_path):
+    src = _face_video("talkinghead.mp4", "[1:v]scale=-2:700[f];[0:v][f]overlay=x=700:y=190:shortest=1[v]")
+    words = _words("So I want to show, I want to show you, um, this.", t0=0.2)  # 12 words, 0.2-4.9 s
+    out = _render_direct(src, "auto", monkeypatch, tmp_path, words=words)
+    rs = _render_direct.settings
+    assert rs["_retakes_cut"] == 1 and rs["_fillers_cut"] == 1 and rs["_cuts"] == 2
+    # the earlier take (4 words, 1.6 s) and "um," are gone: ~3.3 s instead of ~5.3 s
+    assert 3.0 < float(probe(out)["format"]["duration"]) < 3.6
