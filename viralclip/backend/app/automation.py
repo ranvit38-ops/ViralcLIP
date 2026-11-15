@@ -126,6 +126,8 @@ def _import_busy(db: Session, user_id: int) -> bool:
 
 def poll_twitch(db: Session, user: User, s: dict, since: datetime, force: bool) -> None:
     from . import twitch
+    if _import_busy(db, user.id):
+        return  # checked before polling, so a busy tick doesn't use up this account's 30-minute slot
     seen = twitch.imported_map(db, user.id)
     for aid in s["twitch_account_ids"]:
         acc = db.get(TwitchAccount, aid)
@@ -141,11 +143,10 @@ def poll_twitch(db: Session, user: User, s: dict, since: datetime, force: bool) 
                 continue  # still streaming: the VOD is incomplete; pick it up after the stream ends
             if twitch.parse_duration(v.get("duration", "")) < s["min_source_minutes"] * 60:
                 continue
-            if _import_busy(db, user.id):
-                return
             p = twitch.create_import(db, user, v["id"], automated=True)
             event(db, user.id, "import", f"Importing Twitch VOD \"{v.get('title', v['id'])}\"", p.id)
             db.commit()
+            _last_poll.pop(("twitch", aid), None)  # more may be waiting: look again once this download is done
             return  # one per tick
 
 
@@ -157,6 +158,8 @@ def _yt_duration(s: str) -> int:
 def poll_youtube(db: Session, user: User, s: dict, since: datetime, force: bool) -> None:
     from . import youtube
     seen = set(db.scalars(select(SourceVideo.external_id).where(SourceVideo.user_id == user.id, SourceVideo.platform == "youtube")))
+    if _import_busy(db, user.id):
+        return
     ours = set(db.scalars(select(YouTubeUpload.youtube_video_id).where(YouTubeUpload.user_id == user.id,
                                                                         YouTubeUpload.youtube_video_id.is_not(None))))
     for aid in s["youtube_account_ids"]:
@@ -181,11 +184,10 @@ def poll_youtube(db: Session, user: User, s: dict, since: datetime, force: bool)
                 continue
             if _yt_duration(v["contentDetails"].get("duration", "")) < s["min_source_minutes"] * 60:
                 continue
-            if _import_busy(db, user.id):
-                return
             p = youtube.create_import(db, user, v["id"], automated=True)
             event(db, user.id, "import", f"Importing YouTube video \"{v['snippet'].get('title', v['id'])}\"", p.id)
             db.commit()
+            _last_poll.pop(("youtube", aid), None)
             return
 
 
@@ -205,6 +207,13 @@ def process_projects(db: Session, user: User, s: dict) -> None:
                      if _auto(p).get("auto")]
     for p in auto_projects:
         a = _auto(p)
+        # a) a failed import, or an analyze that ended without clips: say so once, don't retry forever
+        failed = _has_job(db, p, "analyze") if p.status == "uploaded" else None
+        if not a.get("processed") and (p.status == "failed" or (failed and failed.status in ("failed", "cancelled"))):
+            _set_auto(p, processed=True)
+            why = p.error if p.status == "failed" else failed.error or "Analysis was cancelled."
+            event(db, user.id, "error", f"\"{p.name}\" stopped: {why}", p.id)
+            continue
         # b) uploaded → analyze (once; a failed analyze is shown in the project, not retried forever)
         if p.status == "uploaded" and not a.get("processed") and not _has_job(db, p, "analyze"):
             if not p.has_audio:
@@ -274,14 +283,17 @@ def run_for_user(db: Session, user: User, force_poll: bool = False) -> None:
     process_projects(db, user, s)
 
 
-def tick() -> None:
+def tick() -> int:
+    """Returns how many activity-log entries this tick wrote (for the worker's heartbeat log line)."""
     with SessionLocal() as db:
+        before = db.scalar(select(func.max(AutomationEvent.id))) or 0
         for user in db.scalars(select(User)):
             try:
                 run_for_user(db, user)
             except Exception:
                 db.rollback()
                 log.exception("automation failed for user %s", user.id)
+        return db.scalar(select(func.count(AutomationEvent.id)).where(AutomationEvent.id > before)) or 0
 
 
 # ---------- API ----------
@@ -337,5 +349,9 @@ def run_now(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """'Check now': poll sources immediately (ignores the 30-minute interval) and advance projects."""
     if not settings_of(user)["enabled"]:
         raise HTTPException(409, "Turn automation on first.")
-    run_for_user(db, user, force_poll=True)
+    from .worker import tick_lock
+    with tick_lock(wait=20) as mine:  # never alongside a worker's tick: both would enqueue the same jobs
+        if not mine:
+            raise HTTPException(409, "Automation is busy right now. Try again in a minute.")
+        run_for_user(db, user, force_poll=True)
     return get_automation(user, db)
