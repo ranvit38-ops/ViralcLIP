@@ -2,8 +2,8 @@
 
 tick() runs once a minute in the worker. It's stateless and idempotent: every decision is derived
 from DB rows (SourceVideo, Job, Clip, project.settings["automation"]), so running it twice, or after
-a restart, never double-imports or double-enqueues. Publishing is the existing YouTube AutoPublishRule,
-which only ever takes approved + rendered clips.
+a restart, never double-imports or double-enqueues. Publishing is the YouTube AutoPublishRule (youtube.tick)
+and the TikTok rule (tiktok.autopublish_tick, run here); both only ever take approved + rendered clips.
 """
 import logging
 import re
@@ -19,8 +19,8 @@ from sqlalchemy.orm import Session
 from . import config, projects
 from .auth import current_user
 from .db import SessionLocal, get_db
-from .models import (AutomationEvent, AutoPublishRule, Clip, Job, Project, SourceVideo, TwitchAccount, User,
-                     YouTubeAccount, YouTubeUpload, now)
+from .models import (AutomationEvent, AutoPublishRule, Clip, Job, Project, SourceVideo, TikTokAccount,
+                     TikTokAutoPublishRule, TwitchAccount, User, YouTubeAccount, YouTubeUpload, now)
 
 log = logging.getLogger("viralclip.automation")
 router = APIRouter(prefix="/api/automation", tags=["automation"])
@@ -293,6 +293,12 @@ def tick() -> int:
             except Exception:
                 db.rollback()
                 log.exception("automation failed for user %s", user.id)
+        from . import tiktok
+        try:
+            tiktok.autopublish_tick(db)  # rules are per account, independent of the import automation switch
+        except Exception:
+            db.rollback()
+            log.exception("TikTok auto-publish failed")
         return db.scalar(select(func.count(AutomationEvent.id)).where(AutomationEvent.id > before)) or 0
 
 
@@ -302,6 +308,7 @@ def tick() -> int:
 def get_automation(user: User = Depends(current_user), db: Session = Depends(get_db)):
     from . import twitch
     rules = {r.account_id: r.enabled for r in db.scalars(select(AutoPublishRule).where(AutoPublishRule.user_id == user.id))}
+    tt_rules = {r.account_id: r.enabled for r in db.scalars(select(TikTokAutoPublishRule).where(TikTokAutoPublishRule.user_id == user.id))}
     auto_pids = [p.id for p in db.scalars(select(Project).where(Project.user_id == user.id)) if _auto(p).get("auto")]
     waiting = db.scalar(select(func.count()).select_from(Clip).where(
         Clip.project_id.in_(auto_pids or [0]), Clip.review_status == "suggested")) or 0
@@ -312,6 +319,9 @@ def get_automation(user: User = Depends(current_user), db: Session = Depends(get
         "youtube_accounts": [{"id": a.id, "channel_title": a.channel_title, "status": a.status,
                               "autopublish_enabled": rules.get(a.id, False)}
                              for a in db.scalars(select(YouTubeAccount).where(YouTubeAccount.user_id == user.id))],
+        "tiktok_accounts": [{"id": a.id, "display_name": a.display_name, "status": a.status,
+                             "autopublish_enabled": tt_rules.get(a.id, False)}
+                            for a in db.scalars(select(TikTokAccount).where(TikTokAccount.user_id == user.id))],
         "waiting_review": waiting,
         "events": [{"id": e.id, "kind": e.kind, "message": e.message, "project_id": e.project_id, "created_at": e.created_at}
                    for e in db.scalars(select(AutomationEvent).where(AutomationEvent.user_id == user.id)

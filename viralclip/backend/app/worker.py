@@ -57,8 +57,9 @@ def handlers():
         h.update(youtube.JOB_HANDLERS)
     except ImportError:
         pass
-    from . import twitch
+    from . import tiktok, twitch
     h.update(twitch.JOB_HANDLERS)
+    h.update(tiktok.JOB_HANDLERS)
     return h
 
 
