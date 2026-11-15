@@ -252,6 +252,11 @@ def stop_background(pidfile: Path):
     else:
         try:
             os.kill(pid, signal.SIGTERM)  # launcher turns this into a clean shutdown of its children
+            # Wait for it (it waits up to 10 s per part), so an immediate restart doesn't see the old one as running.
+            end = time.time() + 60
+            while time.time() < end:
+                os.kill(pid, 0)
+                time.sleep(0.2)
         except ProcessLookupError:
             pass
     pidfile.unlink(missing_ok=True)

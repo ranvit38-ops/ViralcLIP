@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -10,6 +12,10 @@ engine = create_engine(
 )
 
 if _sqlite:
+    if engine.url.database and engine.url.database != ":memory:":
+        # e.g. .env's DATABASE_URL=sqlite:///./data/... while VC_DATA_DIR points elsewhere: sqlite won't create the folder.
+        Path(engine.url.database).parent.mkdir(parents=True, exist_ok=True)
+
     @event.listens_for(engine, "connect")
     def _sqlite_pragmas(conn, _):
         cur = conn.cursor()

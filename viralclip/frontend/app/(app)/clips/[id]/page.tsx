@@ -320,7 +320,7 @@ export default function ClipEditor() {
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,380px)_1fr]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         {/* left: player + render */}
         <div className="space-y-3 lg:sticky lg:top-6 lg:self-start">
           {hasRender && (

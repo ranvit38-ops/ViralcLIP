@@ -211,6 +211,27 @@ let page;
     await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: true });
   }
 
+  // Editor with every <details> open and an "Inspired by" list (research provenance injected into the clip response,
+  // since this stack has no YouTube key): long truncated titles must not widen the page.
+  const clipApi = `${BASE}/api/clips/${editorUrl.split("/").pop()}`;
+  await page.route(clipApi, async (route) => {
+    const res = await route.fetch();
+    const clip = await res.json();
+    const long = "A very long similar Short title that keeps going and going so it can never fit on a phone screen at all #money";
+    clip.score_breakdown = { ...clip.score_breakdown, metadata_sources: { query: "money", similar: [
+      { title: long, views: 1234567, url: "https://www.youtube.com/watch?v=aaaaaaaaaaa" },
+      { title: long + " 2", views: 7654, url: "https://www.youtube.com/watch?v=bbbbbbbbbbb" }] } };
+    await route.fulfill({ response: res, json: clip });
+  });
+  await page.goto(editorUrl.startsWith("http") ? editorUrl : BASE + editorUrl);
+  await page.locator("summary", { hasText: /Inspired by 2 similar Shorts/ }).waitFor();
+  await page.evaluate(() => document.querySelectorAll("details").forEach((d) => { d.open = true; }));
+  await page.waitForTimeout(300);
+  const detailsOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check(detailsOverflow <= 0, `m-editor with Inspired-by and all details open: no horizontal scroll (overflow ${detailsOverflow}px)`);
+  await page.screenshot({ path: path.join(OUT, "m-editor-details.png"), fullPage: true });
+  await page.unroute(clipApi);
+
   const real = errors.filter((e) => !/401 \(Unauthorized\)/.test(e));
   console.log(real.length ? "CONSOLE ERRORS:\n" + real.join("\n") : "no console errors");
   await browser.close();
