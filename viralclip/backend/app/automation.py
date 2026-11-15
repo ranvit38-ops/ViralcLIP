@@ -26,7 +26,7 @@ log = logging.getLogger("viralclip.automation")
 router = APIRouter(prefix="/api/automation", tags=["automation"])
 
 POLL_EVERY = 30 * 60
-IMPORT_JOBS = ("twitch_import", "youtube_import")
+IMPORT_JOBS = ("twitch_import", "youtube_import", "tiktok_import")
 ACTIVE = ("queued", "running", "cancel_requested")
 # ponytail: per-process memory; a worker restart just polls once early (dedupe makes that harmless).
 _last_poll: dict[tuple[str, int], float] = {}

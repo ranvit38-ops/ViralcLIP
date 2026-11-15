@@ -64,7 +64,8 @@ def import_link(body: ImportIn, user: User = Depends(current_user), db: Session 
     sv = db.scalar(select(SourceVideo).where(SourceVideo.user_id == user.id, SourceVideo.platform == platform,
                                              SourceVideo.external_id == vid))
     if sv and sv.project_id and (old := db.get(Project, sv.project_id)):
-        return JSONResponse({"detail": f"Already imported as project \"{old.name}\".", "project_id": old.id}, 409)
+        # Same shape as the app's other structured 409s: {detail: {message, project_id}}.
+        return JSONResponse({"detail": {"message": f"Already imported as project \"{old.name}\".", "project_id": old.id}}, 409)
     automated = settings_of(user)["enabled"]
     if platform == "twitch":
         p = twitch.create_import(db, user, vid, automated=automated)

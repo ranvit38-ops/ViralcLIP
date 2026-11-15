@@ -163,7 +163,8 @@ def test_tiktok_short_link_import_download_and_duplicate(ttl, monkeypatch):
         assert job.params["url"] == f"https://www.tiktok.com/@me.real/video/{TT_MINE}"
 
     r = imp(c, f"https://www.tiktok.com/@me.real/video/{TT_MINE}")
-    assert r.status_code == 409 and r.json()["project_id"] == pid and "Already imported" in r.json()["detail"]
+    d = r.json()["detail"]
+    assert r.status_code == 409 and d["project_id"] == pid and "Already imported" in d["message"]
     other = new_client()  # another user's import of the same id is not a duplicate of yours, and needs their account
     assert imp(other, f"https://www.tiktok.com/@me.real/video/{TT_MINE}").status_code == 409
     assert "project_id" not in imp(other, f"https://www.tiktok.com/@me.real/video/{TT_MINE}").json()
@@ -190,7 +191,7 @@ def test_duplicate_twitch_import_returns_project_and_automation_flag(tw):
         from app.models import Project
         assert db.get(Project, pid).settings["automation"]["auto"] is True  # automation is on: automated processing
     r = imp(c, "twitch.tv/videos/50000005")
-    assert r.status_code == 409 and r.json()["project_id"] == pid
+    assert r.status_code == 409 and r.json()["detail"]["project_id"] == pid
 
 
 # ---------- stats sync ----------
