@@ -296,3 +296,28 @@ def test_a_vod_too_big_for_the_disk_is_logged_and_does_not_block_newer_ones(stac
     assert [p.name for p in rows(Project, c.uid)] == ["Normal"]
     (err,) = [e for e in rows(AutomationEvent, c.uid) if e.kind == "error"]
     assert "Marathon" in err.message and "disk space" in err.message
+
+
+def test_uploaded_vod_joins_automation_only_when_on():
+    from tests.conftest import upload
+    from tests.test_twitch import enable as turn_on
+    c = new_client()
+    uid = c.get("/api/auth/me").json()["id"]
+    manual, r = upload(c, make_video("manual.mp4"), name="Manual")
+    assert r.status_code == 200
+    turn_on(c)
+    auto, r = upload(c, make_video("auto.mp4"), name="Auto")
+    assert r.status_code == 200
+    with SessionLocal() as db:
+        from app.models import User
+        automation.process_projects(db, db.get(User, uid), automation.settings_of(db.get(User, uid)))
+        queued = {j.project_id for j in db.scalars(select(Job).where(Job.job_type == "analyze"))}
+    assert auto in queued and manual not in queued
+
+
+def test_system_check_survives_a_broken_probe(monkeypatch):
+    from app import trends
+    c = new_client()
+    monkeypatch.setattr(trends, "status", lambda *a: 1 / 0)
+    r = c.get("/api/system")
+    assert r.status_code == 200 and r.json()["research"] is None and "whisper_downloaded" in r.json()

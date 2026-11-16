@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import shutil
@@ -17,6 +18,7 @@ from .db import get_db
 from .models import Clip, Job, Project, Transcript, User
 from .projects import job_out, owned_project, project_dir
 
+log = logging.getLogger("viralclip")
 router = APIRouter(prefix="/api", tags=["clips"])
 ACTIVE = ("queued", "running", "cancel_requested")
 
@@ -417,22 +419,36 @@ def put_settings(body: SettingsIn, user: User = Depends(current_user), db: Sessi
 def system(user: User = Depends(current_user), db: Session = Depends(get_db)):
     from .pipeline import CAPTION_PRESETS, WHISPER_MODELS
     import subprocess
-    cache = Path(os.getenv("WHISPER_CACHE_DIR") or Path.home() / ".cache" / "huggingface" / "hub")
-    downloaded = [m for m in WHISPER_MODELS if any(cache.glob(f"*faster-whisper-{m}*"))]
-    try:
-        fonts = sorted({f.split(",")[0].strip() for f in subprocess.run(
-            ["fc-list", ":", "family"], capture_output=True, text=True, timeout=10).stdout.splitlines() if f.strip()})
-    except (OSError, subprocess.TimeoutExpired):
-        fonts = []
-    du = shutil.disk_usage(config.DATA_DIR)
-    used = sum(f.stat().st_size for f in (config.DATA_DIR / "projects").rglob("*") if f.is_file()) \
-        if (config.DATA_DIR / "projects").exists() else 0
-    workers_alive = db.scalar(select(Job.id).where(Job.status == "running").limit(1)) is not None
+
+    def safe(what, fn, default):
+        # One broken probe (e.g. a Windows-only quirk) must not blank the whole Setup/Settings page.
+        try:
+            return fn()
+        except Exception:
+            log.exception("system check %s failed", what)
+            return default
+
+    def downloaded():
+        from huggingface_hub import constants  # follows HF_HOME / HF_HUB_CACHE, which run.py points at VC_DATA_DIR
+        cache = Path(os.getenv("WHISPER_CACHE_DIR") or constants.HF_HUB_CACHE)
+        return [m for m in WHISPER_MODELS if any(cache.glob(f"*faster-whisper-{m}*"))]
+
+    def fonts():
+        out = subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True, timeout=10).stdout
+        return sorted({f.split(",")[0].strip() for f in out.splitlines() if f.strip()})[:200]
+
+    def used():
+        d = config.DATA_DIR / "projects"
+        return sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) if d.exists() else 0
+
+    du = safe("disk", lambda: shutil.disk_usage(config.DATA_DIR), None)
     return {
-        "whisper_models": WHISPER_MODELS, "whisper_downloaded": downloaded,
+        "whisper_models": WHISPER_MODELS, "whisper_downloaded": safe("models", downloaded, []),
         "whisper_default": os.getenv("WHISPER_MODEL", "small"), "whisper_device": os.getenv("WHISPER_DEVICE", "auto"),
         "llm_configured": llm.configured(), "llm_model": os.getenv("LLM_MODEL") if llm.configured() else None,
-        "caption_presets": CAPTION_PRESETS, "fonts": fonts[:200],
-        "disk_free": du.free, "disk_total": du.total, "storage_used": used, "data_dir_configured": True,
-        "job_running": workers_alive, "research": trends.status(db, user.id),
+        "caption_presets": CAPTION_PRESETS, "fonts": safe("fonts", fonts, []),
+        "disk_free": du.free if du else 0, "disk_total": du.total if du else 0,
+        "storage_used": safe("storage", used, 0), "data_dir_configured": True,
+        "job_running": db.scalar(select(Job.id).where(Job.status == "running").limit(1)) is not None,
+        "research": safe("research", lambda: trends.status(db, user.id), None),
     }

@@ -81,8 +81,11 @@ def create_project(body: ProjectCreate, user: User = Depends(current_user), db: 
     free = shutil.disk_usage(config.DATA_DIR).free
     if free - body.size < config.MIN_FREE_BYTES:
         raise HTTPException(507, f"Not enough disk space: {free / 1024**3:.1f} GB free.")
+    from .automation import settings_of
+    # With automation on, an uploaded VOD runs the same chain as an imported one (analyze → approve → render → publish).
     p = Project(user_id=user.id, name=body.name.strip(), source_filename=Path(body.filename).name[:255],
-                upload_size=body.size, status="uploading")
+                upload_size=body.size, status="uploading",
+                settings={"automation": {"auto": True}} if settings_of(user)["enabled"] else {})
     db.add(p)
     db.commit()
     part_path(p).touch()
