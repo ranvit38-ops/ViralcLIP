@@ -8,11 +8,15 @@ SupoClip is a separate program (AGPL-3.0) that this script only talks to over it
 
 ## What it does, every minute
 1. Uploads any finished video file in `inbox/` to SupoClip and starts clipping. The file moves to `inbox/done/`.
-2. Takes the next link from `links.txt` (one per line). Links must be videos published by the YouTube channel
+2. Every 10 minutes, checks your connected Twitch channels. Each stream that has **ended** since you
+   connected is added to `links.txt` automatically. A stream that is still live is clipped once it ends.
+3. Takes the next link from `links.txt` (one per line). YouTube links must be videos published by the YouTube
+   channel you connected in SupoClip; Twitch links must be VODs of a Twitch channel you connected here.
+   Anything else is skipped and listed in `status.txt`. Links must be videos published by the YouTube channel
    you connected in SupoClip; anything else is skipped and listed in `status.txt`. One video is clipped at a
    time, and the next one starts only when fewer than `buffer_days` of posts are queued.
-3. When SupoClip finishes, takes the `top_n` clips scoring at least `min_score`.
-4. Schedules each one to every connected account, one per time slot in `post_times` (six a day by default), never twice.
+4. When SupoClip finishes, takes the `top_n` clips scoring at least `min_score`.
+5. Schedules each one to every connected account, one per time slot in `post_times` (six a day by default), never twice.
 
 Progress is printed and written to `auto.log`. `status.txt` is the weekly glance: links waiting, posts
 scheduled, skipped links, failed videos, and "ADD MORE LINKS" when the queue is nearly empty.
@@ -31,6 +35,15 @@ scheduled, skipped links, failed videos, and "ADD MORE LINKS" when the queue is 
 | `privacy` | `{}` | e.g. `{"youtube": "private"}`; empty uses SupoClip's default |
 | `clip_length` | `auto` | `auto`, `short`, `medium` or `long` |
 | `hashtags` | `["shorts"]` | Added to every post |
+
+## Twitch
+1. In `config.json`, fill `twitch_client_id` and `twitch_client_secret` (dev.twitch.tv → your app). The app's
+   OAuth Redirect URL must include `http://localhost:3000/api/twitch/callback`.
+2. Run `python auto.py --twitch-login` and sign in to the channel. Repeat for each channel you own.
+3. In SupoClip's `.env`, raise the length limit (the default is 90 minutes) and restart SupoClip:
+   `MAX_VIDEO_DURATION=43200` and `STREAM_DOWNLOAD_MAX_SECONDS=10800`.
+
+Twitch deletes VODs after 7–60 days, and only keeps them at all if "Store past broadcasts" is on.
 
 ## Run
 - `start.bat`: run in a window.

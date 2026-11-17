@@ -7,6 +7,7 @@ in your daily time slots. Standard library only.
     python auto.py            run forever (checks every minute)
     python auto.py --once     one pass, then exit
     python auto.py --test     self-check against a fake SupoClip (no network)
+    python auto.py --twitch-login   connect a Twitch channel you own (once per channel)
 
 Settings live in config.json next to this file (created on first run).
 """
@@ -15,9 +16,11 @@ import json
 import mimetypes
 import os
 import re
+import socket
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections import Counter
@@ -35,7 +38,9 @@ DEFAULTS = {
     "min_score": 70,                    # skip clips SupoClip scores below this (0-100)
     "links": str(HERE / "links.txt"),   # one link per line to videos on your own connected YouTube channel
     "post_times": ["09:00", "12:00", "15:00", "18:00", "20:00", "22:00"],  # local time; one post per slot per account
-    "buffer_days": 3,                   # start the next link only when fewer than this many days of posts are queued
+    "buffer_days": 3,
+    "twitch_client_id": "",             # from dev.twitch.tv; redirect URL http://localhost:3000/api/twitch/callback
+    "twitch_client_secret": "",                   # start the next link only when fewer than this many days of posts are queued
     "providers": ["youtube", "tiktok"],
     "privacy": {},                      # e.g. {"youtube": "private"}; empty = SupoClip's default
     "hashtags": ["shorts"],
@@ -134,6 +139,106 @@ def channel_of(vid):
     return m.group(1) if m else None
 
 
+TWITCH_REDIRECT = "http://localhost:3000/api/twitch/callback"
+
+
+def twitch_vod_id(url):
+    m = re.search(r"twitch\.tv/(?:[\w]+/)?videos?/(\d+)", url)
+    return m.group(1) if m else None
+
+
+def twitch_get(cfg, state, path):
+    """Twitch Helix GET with an app token (client credentials), refreshed when it expires."""
+    tok = state.get("twitch_app_token") or {}
+    if tok.get("expires", 0) < time.time() + 300:
+        body = urllib.parse.urlencode({"client_id": cfg["twitch_client_id"], "client_secret": cfg["twitch_client_secret"],
+                                       "grant_type": "client_credentials"}).encode()
+        with urllib.request.urlopen("https://id.twitch.tv/oauth2/token", body, timeout=30) as r:
+            t = json.loads(r.read())
+        tok = state["twitch_app_token"] = {"token": t["access_token"], "expires": time.time() + t["expires_in"]}
+    req = urllib.request.Request("https://api.twitch.tv/helix/" + path, headers={
+        "Client-Id": cfg["twitch_client_id"], "Authorization": f"Bearer {tok['token']}"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read())["data"]
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            state.pop("twitch_app_token", None)
+        raise RuntimeError(f"Twitch {path.split('?')[0]} -> {e.code}") from None
+
+
+def twitch_login(cfg, state):
+    """Proves you own a Twitch channel: you sign in to Twitch, Twitch tells us which channel that is."""
+    import webbrowser
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    if not (cfg["twitch_client_id"] and cfg["twitch_client_secret"]):
+        sys.exit("Put twitch_client_id and twitch_client_secret in config.json first.")
+    csrf, got = uuid.uuid4().hex, {}
+
+    class Back(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            if q.get("state") == [csrf] and q.get("code"):
+                got["code"] = q["code"][0]
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write("Done. You can close this tab.".encode() if got else b"Twitch login failed or was cancelled.")
+
+    class DualStack(HTTPServer):  # "localhost" may resolve to ::1 or 127.0.0.1 depending on the browser
+        address_family = socket.AF_INET6
+
+        def server_bind(self):
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            super().server_bind()
+
+    srv = DualStack(("::", 3000), Back)
+    url = "https://id.twitch.tv/oauth2/authorize?" + urllib.parse.urlencode({
+        "client_id": cfg["twitch_client_id"], "redirect_uri": TWITCH_REDIRECT, "response_type": "code",
+        "scope": "", "state": csrf, "force_verify": "true"})
+    print(f"Sign in to the Twitch channel you want to clip. If no browser opens, visit:\n{url}")
+    webbrowser.open(url)
+    while "code" not in got:
+        srv.handle_request()
+    body = urllib.parse.urlencode({"client_id": cfg["twitch_client_id"], "client_secret": cfg["twitch_client_secret"],
+                                   "code": got["code"], "grant_type": "authorization_code",
+                                   "redirect_uri": TWITCH_REDIRECT}).encode()
+    with urllib.request.urlopen("https://id.twitch.tv/oauth2/token", body, timeout=30) as r:
+        user_token = json.loads(r.read())["access_token"]
+    req = urllib.request.Request("https://api.twitch.tv/helix/users", headers={
+        "Client-Id": cfg["twitch_client_id"], "Authorization": f"Bearer {user_token}"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        me = json.loads(r.read())["data"][0]
+    state.setdefault("twitch_users", {})[me["id"]] = me["login"]
+    state.setdefault("twitch_since", datetime.now().astimezone().isoformat())
+    save(state)
+    print(f"Connected Twitch channel {me['login']}. Its new streams will be clipped after they end.")
+
+
+def watch_twitch(api, cfg, state):
+    """Every 10 min: each finished stream (VOD) of your connected Twitch channels joins the link queue."""
+    users = state.get("twitch_users") or {}
+    if not users or time.time() - state.get("twitch_checked", 0) < 600:
+        return
+    state["twitch_checked"] = time.time()
+    since = state["twitch_since"]
+    seen = state.setdefault("twitch_seen", [])
+    for uid, login in users.items():
+        live = {s.get("id") for s in twitch_get(cfg, state, f"streams?user_id={uid}")}
+        for v in twitch_get(cfg, state, f"videos?user_id={uid}&type=archive&first=10"):
+            created = datetime.fromisoformat(v["created_at"].replace("Z", "+00:00"))
+            if v["id"] in seen or created < datetime.fromisoformat(since) or v.get("stream_id") in live:
+                continue  # already queued, older than your Twitch login, or still live (clipped once it ends)
+            seen.append(v["id"])
+            with open(cfg["links"], "a", encoding="utf-8") as f:
+                f.write(f"https://www.twitch.tv/videos/{v['id']}\n")
+            log(f"New {login} stream \"{v.get('title', '')}\" ({v.get('duration')}) added to the link queue")
+    save(state)
+
+
 def submit_links(api, cfg, state):
     """Start the next link from links.txt: one video at a time, and only while the post queue is running low."""
     f = Path(cfg["links"])
@@ -151,9 +256,28 @@ def submit_links(api, cfg, state):
     mine = {a.get("external_account_id") for a in api.call("GET", "/social/connections")["connections"]
             if a["provider"] == "youtube"}
     for url in todo:
-        vid = video_id(url)
-        if not vid:
-            links[url] = "skipped: not a YouTube link (download other videos of yours and drop the file in inbox)"
+        vid, tv = video_id(url), twitch_vod_id(url)
+        if tv:
+            users = state.get("twitch_users") or {}
+            if not users:  # wait for the login, but don't hold up the YouTube links behind it
+                if not state.get("warned_twitch"):
+                    state["warned_twitch"] = True
+                    log("links.txt: run  python auto.py --twitch-login  to connect your Twitch channel. "
+                        "Twitch links wait until then.")
+                continue
+            found = twitch_get(cfg, state, f"videos?id={tv}")
+            if found and found[0]["user_id"] in users:
+                task = api.call("POST", "/tasks/", {"source": {"url": f"https://www.twitch.tv/videos/{tv}"},
+                                                    "clip_length": cfg["clip_length"]})
+                state["tasks"][task["task_id"]] = {"name": url, "state": "processing"}
+                links[url] = "started"
+                log(f"SupoClip is clipping {url} (task {task['task_id']}); {len(todo) - 1} link(s) still waiting")
+                save(state)
+                return
+            links[url] = ("skipped: not a stream of a Twitch channel you connected" if found
+                          else "skipped: Twitch says this VOD doesn't exist (deleted or expired)")
+        elif not vid:
+            links[url] = "skipped: not a YouTube or Twitch VOD link (download other videos of yours into inbox)"
         elif not mine:
             log("links.txt: connect your YouTube channel in SupoClip first. Will retry.")
             return
@@ -278,7 +402,7 @@ def load_config():
 
 
 def run_once(api, cfg, state):
-    for step in (submit_inbox, submit_links, schedule_finished, write_status):
+    for step in (submit_inbox, watch_twitch, submit_links, schedule_finished, write_status):
         try:
             step(api, cfg, state)
         except (RuntimeError, OSError) as e:  # SupoClip down, disk hiccup: say so and try again next pass
@@ -326,6 +450,8 @@ def self_test():
                     {"id": i, "provider": p, "display_name": p, "status": "active", "revoked_at": None,
                      "external_account_id": "UC" + "m" * 22}
                     for i, p in (("tt", "tiktok"), ("yt", "youtube"), ("ig", "instagram"))]})
+            elif self.path == "/tasks/T3":
+                self.reply({"id": "T3", "status": "processing", "progress": 10})
             elif self.path in ("/tasks/T1", "/tasks/T2"):
                 self.reply({"id": self.path[-2:], "status": "completed", "progress": 100})
             elif self.path == "/tasks/T1/clips":
@@ -347,8 +473,9 @@ def self_test():
                 self.reply({"message": "Video uploaded successfully", "video_path": "upload://x.mp4"})
             elif self.path == "/tasks/":
                 url = json.loads(raw)["source"]["url"]
-                assert url in ("upload://x.mp4", "https://www.youtube.com/watch?v=" + "a" * 11), url
-                self.reply({"task_id": "T1" if url.startswith("upload") else "T2"})
+                assert url in ("upload://x.mp4", "https://www.youtube.com/watch?v=" + "a" * 11,
+                               "https://www.twitch.tv/videos/1"), url
+                self.reply({"task_id": {"u": "T1", "h": "T2"}[url[0]] if "twitch" not in url else "T3"})
             elif self.path == "/social/captions":
                 self.send_error(503)
             elif self.path == "/social/posts":
@@ -390,12 +517,35 @@ def self_test():
         for _ in range(3):
             run_once(api, cfg, state)
         assert calls.count("/tasks/") == 2 and state["links"][own] == "started"
-        assert state["links"][other].startswith("skipped") and len(state["links"]) == 3
+        assert state["links"][other].startswith("skipped") and len(state["links"]) == 2  # Twitch link waits for login
         assert {p["clip_id"] for p in posts} == {"c95", "c80", "c75", "L1"} and len(posts) == 8
+        # Twitch: a finished stream of the connected channel is queued and clipped; a live one and others' VODs aren't
+        global twitch_get
+        vods = {"1": "me", "2": "me", "3": "other"}
+        def fake_twitch(cfg, state, path):
+            if path.startswith("streams"):
+                return [{"id": "s2"}]
+            if path.startswith("videos?user_id"):
+                return [{"id": i, "user_id": "me", "stream_id": "s" + i, "title": "t", "duration": "3h",
+                         "created_at": "2099-01-01T00:00:00Z"} for i in ("1", "2")]
+            vid = path.split("id=")[1]
+            return [{"id": vid, "user_id": vods[vid]}] if vid in vods else []
+        twitch_get = fake_twitch
+        state.update(twitch_users={"me": "mychannel"}, twitch_since="2026-01-01T00:00:00+00:00")
+        Path(cfg["links"]).write_text("https://www.twitch.tv/videos/3\n")  # replaces the file: video 123 is gone
+        before = calls.count("/tasks/")
+        for _ in range(3):
+            run_once(api, cfg, state)
+        assert state["twitch_seen"] == ["1"], state["twitch_seen"]   # VOD 2 is still live
+        assert state["links"]["https://www.twitch.tv/videos/3"].startswith("skipped")
+        assert state["links"]["https://www.twitch.tv/videos/1"] == "started" and calls.count("/tasks/") == before + 1
+        assert twitch_vod_id("https://www.twitch.tv/me/video/123") == "123"
         cfg["buffer_days"] = 0                          # queue "full": a new link waits
         Path(cfg["links"]).write_text("https://youtu.be/" + "a" * 10 + "c\n")
+        state["tasks"]["T3"]["state"] = "failed"      # nothing processing, so only the full queue holds it back
+        n = calls.count("/tasks/")
         run_once(api, cfg, state)
-        assert calls.count("/tasks/") == 2
+        assert calls.count("/tasks/") == n
     assert video_id("https://www.youtube.com/shorts/abcdefghijk?x=1") == "abcdefghijk"
     assert video_id("https://www.youtube.com/watch?t=5&v=abcdefghijk") == "abcdefghijk" and not video_id("https://x.com/a")
     now = datetime(2026, 1, 1, 13, 0).astimezone()
@@ -405,4 +555,9 @@ def self_test():
 
 
 if __name__ == "__main__":
-    self_test() if "--test" in sys.argv else main()
+    if "--test" in sys.argv:
+        self_test()
+    elif "--twitch-login" in sys.argv:
+        twitch_login(load_config(), json.loads(STATE.read_text()) if STATE.exists() else {"tasks": {}, "sizes": {}})
+    else:
+        main()
