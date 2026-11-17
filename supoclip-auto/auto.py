@@ -9,6 +9,7 @@ to every connected YouTube/TikTok account in your daily time slots. Standard lib
 
 Settings live in config.json next to this file (created on first run).
 """
+import hashlib
 import json
 import mimetypes
 import os
@@ -76,7 +77,8 @@ class Api:
         r = self.call("POST", "/upload", parts(), timeout=3600, headers={
             "Content-Type": f"multipart/form-data; boundary={boundary}",
             "Content-Length": str(len(head) + f.stat().st_size + len(tail)),
-            "Idempotency-Key": f"{f.name}-{f.stat().st_size}"})
+            # SupoClip only accepts [A-Za-z0-9._:-]{8,200} here, so hash the name (spaces, brackets, accents)
+            "Idempotency-Key": hashlib.sha1(f"{f.name}-{f.stat().st_size}".encode()).hexdigest()})
         return r["video_path"]
 
 
@@ -130,20 +132,26 @@ def schedule_finished(api, cfg, state):
             if not accounts:
                 log(f"{t['name']}: clips are ready but no YouTube/TikTok account is connected in SupoClip. Will retry.")
                 continue
-            n = sum(post_clip(api, cfg, tid, c, a) for c in picks for a in accounts)
-            t["state"] = "scheduled"
-            log(f"{t['name']}: {len(clips)} clips made, {len(picks)} passed (score >= {cfg['min_score']}), "
-                f"{n} post(s) scheduled.")
+            done = [post_clip(api, cfg, tid, c, a) for c in picks for a in accounts]
+            t["tries"] = t.get("tries", 0) + 1
+            # ponytail: a refused post is retried every pass, then dropped after 30 passes (~30 min) to stop log spam
+            if all(done) or t["tries"] >= 30:
+                t["state"] = "scheduled"
+                log(f"{t['name']}: {len(clips)} clips made, {len(picks)} passed (score >= {cfg['min_score']}), "
+                    f"{sum(done)} of {len(done)} post(s) scheduled.")
+            else:
+                log(f"{t['name']}: {done.count(False)} post(s) not scheduled yet. Will retry.")
         save(state)
 
 
-def post_clip(api, cfg, tid, clip, account) -> int:
+def post_clip(api, cfg, tid, clip, account) -> bool:
+    """True once this clip is scheduled (now or on an earlier pass) for this account."""
     # SupoClip is the source of truth for what's already posted/scheduled, so a crash here never double-posts.
     def posts(query):
         return [p for p in api.call("GET", f"/social/posts?limit=500&{query}")["posts"]
                 if p.get("social_account_id") == account["id"]]
     if any(p.get("status") != "cancelled" for p in posts(f"clip_id={clip['id']}")):
-        return 0
+        return True
     # ponytail: reads up to 500 scheduled posts (SupoClip's page cap); page through if you ever queue more.
     taken = {datetime.fromisoformat(p["scheduled_for"].replace("Z", "+00:00")).astimezone().isoformat()
              for p in posts("status=scheduled") if p.get("scheduled_for")}
@@ -152,7 +160,7 @@ def post_clip(api, cfg, tid, clip, account) -> int:
             "hashtags": cfg["hashtags"], "scheduled_for": when.isoformat()}
     if cfg["privacy"].get(account["provider"]):
         body["privacy_level"] = cfg["privacy"][account["provider"]]
-    try:  # AI caption needs ANTHROPIC_API_KEY on the SupoClip server; without it SupoClip uses the clip's hook title
+    try:  # AI caption needs ANTHROPIC_API_KEY on the SupoClip server; without it the caption is the clip's transcript
         body["caption"] = api.call("POST", "/social/captions", {
             "task_id": tid, "clip_id": clip["id"], "provider": account["provider"]})["caption"]
     except RuntimeError:
@@ -161,9 +169,9 @@ def post_clip(api, cfg, tid, clip, account) -> int:
         api.call("POST", "/social/posts", body)
     except RuntimeError as e:
         log(f"Couldn't schedule a clip to {account['provider']} ({account.get('display_name')}): {e}")
-        return 0
+        return False
     log(f"  -> {account['provider']} {account.get('display_name') or ''} at {when:%a %d %b %H:%M}")
-    return 1
+    return True
 
 
 STATE = HERE / "state.json"
@@ -210,12 +218,14 @@ def main():
 
 
 def self_test():
-    """Fake SupoClip on a local port; one video goes inbox -> task -> scheduled posts, with no duplicates."""
+    """Fake SupoClip on a local port; one video goes inbox -> task -> scheduled posts, with no duplicates.
+    Paths, fields and refusals copy what a real SupoClip returned (checked against a running one, Nov 2026)."""
+    import re
     import tempfile
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
     global STATE
-    posts, calls = [], []
+    posts, calls, refuse_once = [], [], {"tt"}
 
     class Fake(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -231,45 +241,54 @@ def self_test():
         def do_GET(self):
             assert self.headers["Authorization"] == "Bearer sk_test"
             if self.path == "/social/connections":
-                self.reply({"connections": [{"id": "yt", "provider": "youtube", "status": "active"},
-                                            {"id": "tt", "provider": "tiktok", "status": "active"},
-                                            {"id": "ig", "provider": "instagram", "status": "active"}]})
+                self.reply({"total": 3, "connections": [
+                    {"id": i, "provider": p, "display_name": p, "status": "active", "revoked_at": None}
+                    for i, p in (("tt", "tiktok"), ("yt", "youtube"), ("ig", "instagram"))]})
             elif self.path == "/tasks/T1":
-                self.reply({"status": "completed"})
+                self.reply({"id": "T1", "status": "completed", "progress": 100})
             elif self.path == "/tasks/T1/clips":
-                self.reply({"clips": [{"id": f"c{s}", "virality_score": s} for s in (95, 40, 80, 75, 72)]})
+                self.reply({"task_id": "T1", "total_clips": 5,
+                            "clips": [{"id": f"c{s}", "virality_score": s} for s in (95, 40, 80, 75, 72)]})
             elif self.path.startswith("/social/posts?"):
                 q = dict(kv.split("=") for kv in self.path.split("?")[1].split("&"))
-                self.reply({"posts": [p for p in posts if all(p.get(k) == v for k, v in q.items() if k != "limit")]})
+                found = [p for p in posts if all(p.get(k) == v for k, v in q.items() if k != "limit")]
+                self.reply({"posts": found, "total": len(found)})
 
         def do_POST(self):
             raw = self.rfile.read(int(self.headers["Content-Length"]))
             calls.append(self.path)
             if self.path == "/upload":
                 assert b"FAKEVIDEO" in raw and b'name="video"' in raw
-                self.reply({"video_path": "upload://x.mp4"})
+                assert re.fullmatch(r"[A-Za-z0-9._:-]{8,200}", self.headers["Idempotency-Key"])
+                self.reply({"message": "Video uploaded successfully", "video_path": "upload://x.mp4"})
             elif self.path == "/tasks/":
                 assert json.loads(raw)["source"]["url"] == "upload://x.mp4"
                 self.reply({"task_id": "T1"})
             elif self.path == "/social/captions":
                 self.send_error(503)
             elif self.path == "/social/posts":
-                posts.append({**json.loads(raw), "status": "scheduled"})
-                self.reply({"post": {}})
+                post = {**json.loads(raw), "status": "scheduled"}
+                if post["social_account_id"] in refuse_once:  # e.g. "TikTok publishing is paused"
+                    refuse_once.clear()
+                    return self.send_error(503)
+                posts.append(post)
+                self.reply({"post": post})
 
     srv = HTTPServer(("127.0.0.1", 0), Fake)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     with tempfile.TemporaryDirectory() as d:
         STATE = Path(d) / "state.json"
         (Path(d) / "in").mkdir()
-        (Path(d) / "in" / "vod.mp4").write_bytes(b"FAKEVIDEO")
+        (Path(d) / "in" / "my vod (1).mp4").write_bytes(b"FAKEVIDEO")
         cfg = {**DEFAULTS, "inbox": str(Path(d) / "in"), "privacy": {"youtube": "private"}}
         api, state = Api(f"http://127.0.0.1:{srv.server_port}", "sk_test"), {"tasks": {}, "sizes": {}}
         run_once(api, cfg, state)                       # pass 1: file seen, size recorded, not uploaded yet
         assert "/upload" not in calls
-        for _ in range(3):                              # pass 2 uploads + schedules; later passes change nothing
+        run_once(api, cfg, state)                       # pass 2 uploads + schedules; one post is refused
+        assert len(posts) == 5 and state["tasks"]["T1"]["state"] == "processing"
+        for _ in range(3):                              # pass 3 retries just that one; later passes change nothing
             run_once(api, cfg, state)
-        assert calls.count("/upload") == 1 and (Path(d) / "in" / "done" / "vod.mp4").exists()
+        assert calls.count("/upload") == 1 and (Path(d) / "in" / "done" / "my vod (1).mp4").exists()
         assert len(posts) == 6, posts                   # top 3 (95, 80, 75) x youtube + tiktok, never instagram
         assert {p["clip_id"] for p in posts} == {"c95", "c80", "c75"}
         for acc in ("yt", "tt"):
