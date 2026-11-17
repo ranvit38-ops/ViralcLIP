@@ -8,10 +8,14 @@ SupoClip is a separate program (AGPL-3.0) that this script only talks to over it
 
 ## What it does, every minute
 1. Uploads any finished video file in `inbox/` to SupoClip and starts clipping. The file moves to `inbox/done/`.
-2. When SupoClip finishes, takes the `top_n` clips scoring at least `min_score`.
-3. Schedules each one to every connected account, one per time slot in `post_times`, never twice.
+2. Takes the next link from `links.txt` (one per line). Links must be videos published by the YouTube channel
+   you connected in SupoClip; anything else is skipped and listed in `status.txt`. One video is clipped at a
+   time, and the next one starts only when fewer than `buffer_days` of posts are queued.
+3. When SupoClip finishes, takes the `top_n` clips scoring at least `min_score`.
+4. Schedules each one to every connected account, one per time slot in `post_times` (six a day by default), never twice.
 
-Progress is printed and also written to `auto.log`.
+Progress is printed and written to `auto.log`. `status.txt` is the weekly glance: links waiting, posts
+scheduled, skipped links, failed videos, and "ADD MORE LINKS" when the queue is nearly empty.
 
 ## Settings (`config.json`, created on first run)
 | Setting | Default | Meaning |
@@ -20,7 +24,9 @@ Progress is printed and also written to `auto.log`.
 | `api_url` | `http://localhost:8000` | SupoClip's backend |
 | `inbox` | `inbox` next to the script | Folder to watch |
 | `top_n` / `min_score` | 3 / 70 | How many clips per video, and the lowest score to post |
-| `post_times` | `["12:00", "18:00"]` | Daily slots in your local time, per account |
+| `links` | `links.txt` next to the script | Link queue: your own YouTube videos, one per line |
+| `post_times` | six slots, 09:00–22:00 | Daily slots in your local time, per account |
+| `buffer_days` | 3 | Days of queued posts before the next link waits |
 | `providers` | `["youtube", "tiktok"]` | Which connected platforms to post to |
 | `privacy` | `{}` | e.g. `{"youtube": "private"}`; empty uses SupoClip's default |
 | `clip_length` | `auto` | `auto`, `short`, `medium` or `long` |
