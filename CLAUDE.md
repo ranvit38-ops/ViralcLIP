@@ -1,6 +1,7 @@
 # Repo notes for Claude
 
 - `viralclip/` is the ViralClip app: AI video clipping plus YouTube/Twitch automation. Everything else at the repo root is an unrelated donation website; don't touch it.
+- `supoclip-auto/` is a small script that automates a self-hosted SupoClip (inbox folder → clips → scheduled YouTube/TikTok posts). Check: `python supoclip-auto/auto.py --test`.
 - When the user says **"deploy agents"**, invoke the `deploy-agents` skill. The agents are in `.claude/agents/` (viralclip-backend, viralclip-frontend, viralclip-qa, viralclip-perf).
 - Status and next tasks: `viralclip/DEVELOPMENT_STATUS.md`. Design: `viralclip/ARCHITECTURE.md`.
 - Tests:
