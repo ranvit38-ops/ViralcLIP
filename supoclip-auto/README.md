@@ -12,9 +12,7 @@ SupoClip is a separate program (AGPL-3.0) that this script only talks to over it
    connected is added to `links.txt` automatically. A stream that is still live is clipped once it ends.
 3. Takes the next link from `links.txt` (one per line). YouTube links must be videos published by the YouTube
    channel you connected in SupoClip; Twitch links must be VODs of a Twitch channel you connected here.
-   Anything else is skipped and listed in `status.txt`. Links must be videos published by the YouTube channel
-   you connected in SupoClip; anything else is skipped and listed in `status.txt`. One video is clipped at a
-   time, and the next one starts only when fewer than `buffer_days` of posts are queued.
+   Anything else is skipped and listed in `status.txt`. One video is clipped at a time, and the next one starts only when fewer than `buffer_days` of posts are queued.
 4. When SupoClip finishes, takes the `top_n` clips scoring at least `min_score`.
 5. Schedules each one to every connected account, one per time slot in `post_times` (six a day by default), never twice.
 
