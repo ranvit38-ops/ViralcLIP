@@ -42,7 +42,9 @@ DEFAULTS = {
     "links": str(HERE / "links.txt"),   # one link per line to videos on your own connected YouTube channel
     "post_times": ["09:00", "12:00", "15:00", "18:00", "20:00", "22:00"],  # local time; one post per slot per account
     "buffer_days": 3,
-    "chat_bonus": 20,                   # score points added to a clip when your Twitch chat spiked during it
+    "chat_bonus": 20,
+    "min_hook": 60,                     # skip clips whose opening (SupoClip's hook_score, 0-100) is weaker than this
+    "learn_bonus": 10,                  # +/- points for hook styles that got more/fewer views on YOUR posts                   # score points added to a clip when your Twitch chat spiked during it
     "twitch_client_id": "",             # from dev.twitch.tv; redirect URL http://localhost:3000/api/twitch/callback
     "twitch_client_secret": "",                   # start the next link only when fewer than this many days of posts are queued
     "providers": ["youtube", "tiktok"],
@@ -394,12 +396,27 @@ def write_status(api, cfg, state):
     (HERE / "status.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def hook_adjust(by_hook, bonus):
+    """Your own results: hook styles averaging more views than your overall average get +bonus, fewer get -bonus.
+    Only styles with 3+ measured posts count, so one lucky post doesn't steer everything."""
+    rows = [r for r in by_hook if (r.get("posts") or 0) >= 3 and r.get("avg_views") is not None]
+    if len(rows) < 2:
+        return {}
+    avg = sum(r["avg_views"] * r["posts"] for r in rows) / sum(r["posts"] for r in rows)
+    return {r["hook_type"]: bonus if r["avg_views"] > avg * 1.2 else -bonus if r["avg_views"] < avg * 0.8 else 0
+            for r in rows}
+
+
 def schedule_finished(api, cfg, state):
     waiting = {tid: t for tid, t in state["tasks"].items() if t["state"] == "processing"}
     if not waiting:
         return
     accounts = [a for a in api.call("GET", "/social/connections")["connections"]
                 if a["provider"] in cfg["providers"] and a.get("status") != "reauth_required"]
+    try:
+        learned = hook_adjust(api.call("GET", "/social/performance").get("by_hook_type") or [], cfg["learn_bonus"])
+    except RuntimeError:
+        learned = {}
     for tid, t in waiting.items():
         status = api.call("GET", f"/tasks/{tid}").get("status")
         if status in ("error", "cancelled", "failed"):
@@ -407,11 +424,13 @@ def schedule_finished(api, cfg, state):
             log(f"{t['name']}: SupoClip couldn't clip it ({status}). Open the task in SupoClip to see why.")
         elif status == "completed":
             clips = api.call("GET", f"/tasks/{tid}/clips")["clips"]
-            def score(c):  # SupoClip's virality score, +chat_bonus if chat spiked during the clip
+            def score(c):  # SupoClip's virality score, +chat spike, +/- what worked on your own posts
                 hit = any(clip_seconds(c["start_time"]) - 10 <= s <= clip_seconds(c["end_time"]) + 10
                           for s in t.get("spikes", [])) if c.get("start_time") else False
-                return (c.get("virality_score") or 0) + (cfg["chat_bonus"] if hit else 0)
-            picks = [c for c in sorted(clips, key=lambda c: -score(c))[:cfg["top_n"]] if score(c) >= cfg["min_score"]]
+                return ((c.get("virality_score") or 0) + (cfg["chat_bonus"] if hit else 0)
+                        + learned.get(c.get("hook_type") or "none", 0))
+            strong = [c for c in clips if c.get("hook_score") is None or c["hook_score"] >= cfg["min_hook"]]
+            picks = [c for c in sorted(strong, key=lambda c: -score(c))[:cfg["top_n"]] if score(c) >= cfg["min_score"]]
             if not accounts:
                 log(f"{t['name']}: clips are ready but no YouTube/TikTok account is connected in SupoClip. Will retry.")
                 continue
@@ -534,6 +553,8 @@ def self_test():
                     for i, p in (("tt", "tiktok"), ("yt", "youtube"), ("ig", "instagram"))]})
             elif self.path == "/tasks/T3":
                 self.reply({"id": "T3", "status": "completed" if t3_done else "processing", "progress": 10})
+            elif self.path == "/social/performance":
+                self.reply({"by_hook_type": []})
             elif self.path == "/tasks/T3/clips":  # x2 scores lower but chat spiked during it (at 10:00)
                 self.reply({"task_id": "T3", "clips": [
                     {"id": "x1", "virality_score": 90, "start_time": "00:00", "end_time": "00:30"},
@@ -642,6 +663,9 @@ def self_test():
         + [1000 + 7200 + i * 0.3 for i in range(80)]
     assert chat_spikes(stamps, 1000, 3 * 3600) == [1800, 7200], chat_spikes(stamps, 1000, 3 * 3600)
     assert chat_spikes(stamps[:30], 1000, 3600) == []
+    rows = [{"hook_type": "question", "posts": 5, "avg_views": 9000}, {"hook_type": "story", "posts": 4, "avg_views": 1000},
+            {"hook_type": "bold", "posts": 1, "avg_views": 99999}]
+    assert hook_adjust(rows, 10) == {"question": 10, "story": -10} and hook_adjust(rows[:1], 10) == {}
     assert clip_seconds("75:30") == 4530 and clip_seconds("1:02:03") == 3723 and hms(3723) == "1:02:03"
     assert video_id("https://www.youtube.com/shorts/abcdefghijk?x=1") == "abcdefghijk"
     assert video_id("https://www.youtube.com/watch?t=5&v=abcdefghijk") == "abcdefghijk" and not video_id("https://x.com/a")

@@ -32,6 +32,9 @@ scheduled, skipped links, failed videos, and "ADD MORE LINKS" when the queue is 
 | `providers` | `["youtube", "tiktok"]` | Which connected platforms to post to |
 | `privacy` | `{}` | e.g. `{"youtube": "private"}`; empty uses SupoClip's default |
 | `clip_length` | `auto` | `auto`, `short`, `medium` or `long` |
+| `min_hook` | 60 | Skip clips whose first seconds SupoClip rates weaker than this |
+| `chat_bonus` | 20 | Score added when your Twitch chat spiked during the clip |
+| `learn_bonus` | 10 | +/- for hook styles that beat/missed your average views (needs 3+ measured posts per style) |
 | `hashtags` | `["shorts"]` | Added to every post |
 
 ## Twitch
