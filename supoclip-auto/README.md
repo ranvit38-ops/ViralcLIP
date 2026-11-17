@@ -41,6 +41,11 @@ scheduled, skipped links, failed videos, and "ADD MORE LINKS" when the queue is 
 3. In SupoClip's `.env`, raise the length limit (the default is 90 minutes) and restart SupoClip:
    `MAX_VIDEO_DURATION=43200` and `STREAM_DOWNLOAD_MAX_SECONDS=10800`.
 
+**Chat spikes.** While `auto.py` runs, it reads your channel's chat (anonymously, read-only) and logs when
+messages arrive, in `chat/<channel>.txt`. When a stream's VOD is clipped, the busiest chat moments are
+passed to SupoClip as guidance, and any clip that covers one gets `chat_bonus` (default 20) added to its
+score, so those clips are posted first. Chat is only recorded while the script is running during the stream.
+
 Twitch deletes VODs after 7–60 days, and only keeps them at all if "Store past broadcasts" is on.
 
 ## Run

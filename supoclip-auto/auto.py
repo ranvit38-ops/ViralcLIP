@@ -17,7 +17,10 @@ import mimetypes
 import os
 import re
 import socket
+import ssl
+import statistics
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -39,6 +42,7 @@ DEFAULTS = {
     "links": str(HERE / "links.txt"),   # one link per line to videos on your own connected YouTube channel
     "post_times": ["09:00", "12:00", "15:00", "18:00", "20:00", "22:00"],  # local time; one post per slot per account
     "buffer_days": 3,
+    "chat_bonus": 20,                   # score points added to a clip when your Twitch chat spiked during it
     "twitch_client_id": "",             # from dev.twitch.tv; redirect URL http://localhost:3000/api/twitch/callback
     "twitch_client_secret": "",                   # start the next link only when fewer than this many days of posts are queued
     "providers": ["youtube", "tiktok"],
@@ -167,6 +171,70 @@ def twitch_get(cfg, state, path):
         raise RuntimeError(f"Twitch {path.split('?')[0]} -> {e.code}") from None
 
 
+CHAT = HERE / "chat"
+
+
+def record_chat(login):
+    """Logs the time of every chat message in your channel (read-only, anonymous). Runs while auto.py runs."""
+    CHAT.mkdir(exist_ok=True)
+    while True:
+        try:
+            raw = socket.create_connection(("irc.chat.twitch.tv", 6697), timeout=360)
+            with ssl.create_default_context().wrap_socket(raw, server_hostname="irc.chat.twitch.tv") as sock, \
+                    sock.makefile("r", encoding="utf-8", errors="replace") as lines, \
+                    open(CHAT / f"{login}.txt", "a", encoding="utf-8") as out:
+                sock.sendall(f"NICK justinfan{uuid.uuid4().int % 90000 + 10000}\r\nJOIN #{login}\r\n".encode())
+                for line in lines:
+                    if line.startswith("PING"):
+                        sock.sendall(line.replace("PING", "PONG", 1).encode())
+                    elif " PRIVMSG " in line:
+                        out.write(f"{time.time():.0f}\n")
+                        out.flush()
+        except OSError as e:
+            log(f"Twitch chat for {login} disconnected ({e}); reconnecting in 30 s")
+        time.sleep(30)
+
+
+def hms(seconds):
+    return f"{int(seconds) // 3600}:{int(seconds) % 3600 // 60:02d}:{int(seconds) % 60:02d}"
+
+
+def chat_spikes(stamps, start, length, window=30, top=8):
+    """Offsets (s into the VOD) of the busiest chat moments: windows well above the stream's normal chat rate."""
+    counts = [0] * (int(length // window) + 1)
+    for t in stamps:
+        if start <= t < start + length:
+            counts[int((t - start) // window)] += 1
+    if sum(counts) < 50:  # too little chat to tell a spike from noise
+        return []
+    bar = statistics.mean(counts) + 2 * statistics.pstdev(counts)
+    hot = sorted((i for i, c in enumerate(counts) if c >= bar and c >= 5), key=lambda i: -counts[i])
+    picked = []
+    for i in hot:  # one spike per 2 minutes: a single moment fills several windows
+        if all(abs(i - j) * window >= 120 for j in picked):
+            picked.append(i)
+    # ponytail: chat reacts a few seconds after the moment; window start is close enough for clip matching
+    return sorted(i * window for i in picked[:top])
+
+
+def vod_spikes(login, video):
+    f = CHAT / f"{login}.txt"
+    if not f.exists():
+        return []
+    start = datetime.fromisoformat(video["created_at"].replace("Z", "+00:00")).timestamp()
+    length = sum(int(n) * {"h": 3600, "m": 60, "s": 1}[u] for n, u in re.findall(r"(\d+)([hms])", video["duration"]))
+    stamps = [float(x) for x in f.read_text().split()]
+    return chat_spikes(stamps, start, length)
+
+
+def clip_seconds(value):
+    """SupoClip clip times are "MM:SS" (or "H:MM:SS"); returns seconds."""
+    total = 0
+    for part in str(value).split(":"):
+        total = total * 60 + float(part)
+    return total
+
+
 def twitch_login(cfg, state):
     """Proves you own a Twitch channel: you sign in to Twitch, Twitch tells us which channel that is."""
     import webbrowser
@@ -267,9 +335,16 @@ def submit_links(api, cfg, state):
                 continue
             found = twitch_get(cfg, state, f"videos?id={tv}")
             if found and found[0]["user_id"] in users:
-                task = api.call("POST", "/tasks/", {"source": {"url": f"https://www.twitch.tv/videos/{tv}"},
-                                                    "clip_length": cfg["clip_length"]})
-                state["tasks"][task["task_id"]] = {"name": url, "state": "processing"}
+                spikes = vod_spikes(users[found[0]["user_id"]], found[0])
+                body = {"source": {"url": f"https://www.twitch.tv/videos/{tv}"}, "clip_length": cfg["clip_length"]}
+                try:  # SupoClip's AI reads this as editorial guidance; the pick below doesn't depend on it
+                    hint = ("Chat exploded at " + ", ".join(map(hms, spikes)) + ". Favor clips that include these moments.")
+                    task = api.call("POST", "/tasks/", {**body, "instructions": hint[:500]} if spikes else body)
+                except RuntimeError:
+                    task = api.call("POST", "/tasks/", body)
+                if spikes:
+                    log(f"Chat spikes in {url}: {', '.join(map(hms, spikes))}")
+                state["tasks"][task["task_id"]] = {"name": url, "state": "processing", "spikes": spikes}
                 links[url] = "started"
                 log(f"SupoClip is clipping {url} (task {task['task_id']}); {len(todo) - 1} link(s) still waiting")
                 save(state)
@@ -332,8 +407,11 @@ def schedule_finished(api, cfg, state):
             log(f"{t['name']}: SupoClip couldn't clip it ({status}). Open the task in SupoClip to see why.")
         elif status == "completed":
             clips = api.call("GET", f"/tasks/{tid}/clips")["clips"]
-            picks = sorted(clips, key=lambda c: -(c.get("virality_score") or 0))[:cfg["top_n"]]
-            picks = [c for c in picks if (c.get("virality_score") or 0) >= cfg["min_score"]]
+            def score(c):  # SupoClip's virality score, +chat_bonus if chat spiked during the clip
+                hit = any(clip_seconds(c["start_time"]) - 10 <= s <= clip_seconds(c["end_time"]) + 10
+                          for s in t.get("spikes", [])) if c.get("start_time") else False
+                return (c.get("virality_score") or 0) + (cfg["chat_bonus"] if hit else 0)
+            picks = [c for c in sorted(clips, key=lambda c: -score(c))[:cfg["top_n"]] if score(c) >= cfg["min_score"]]
             if not accounts:
                 log(f"{t['name']}: clips are ready but no YouTube/TikTok account is connected in SupoClip. Will retry.")
                 continue
@@ -415,6 +493,9 @@ def main():
     state = json.loads(STATE.read_text()) if STATE.exists() else {"tasks": {}, "sizes": {}}
     api = Api(cfg["api_url"], cfg["api_key"])
     log(f"Watching {cfg['inbox']} and {cfg['links']} -> {cfg['api_url']}")
+    for login in (state.get("twitch_users") or {}).values():
+        threading.Thread(target=record_chat, args=(login,), daemon=True).start()
+        log(f"Recording Twitch chat activity for {login}")
     while True:
         run_once(api, cfg, state)
         if "--once" in sys.argv:
@@ -431,6 +512,7 @@ def self_test():
     from http.server import BaseHTTPRequestHandler, HTTPServer
     global STATE
     posts, calls, refuse_once = [], [], {"tt"}
+    t3_done = False
 
     class Fake(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -451,7 +533,11 @@ def self_test():
                      "external_account_id": "UC" + "m" * 22}
                     for i, p in (("tt", "tiktok"), ("yt", "youtube"), ("ig", "instagram"))]})
             elif self.path == "/tasks/T3":
-                self.reply({"id": "T3", "status": "processing", "progress": 10})
+                self.reply({"id": "T3", "status": "completed" if t3_done else "processing", "progress": 10})
+            elif self.path == "/tasks/T3/clips":  # x2 scores lower but chat spiked during it (at 10:00)
+                self.reply({"task_id": "T3", "clips": [
+                    {"id": "x1", "virality_score": 90, "start_time": "00:00", "end_time": "00:30"},
+                    {"id": "x2", "virality_score": 75, "start_time": "09:50", "end_time": "10:20"}]})
             elif self.path in ("/tasks/T1", "/tasks/T2"):
                 self.reply({"id": self.path[-2:], "status": "completed", "progress": 100})
             elif self.path == "/tasks/T1/clips":
@@ -540,12 +626,23 @@ def self_test():
         assert state["links"]["https://www.twitch.tv/videos/3"].startswith("skipped")
         assert state["links"]["https://www.twitch.tv/videos/1"] == "started" and calls.count("/tasks/") == before + 1
         assert twitch_vod_id("https://www.twitch.tv/me/video/123") == "123"
+        nonlocal_cfg = {**cfg, "top_n": 1}
+        state["tasks"]["T3"]["spikes"] = [600]
+        t3_done = True
+        schedule_finished(api, nonlocal_cfg, state)
+        assert "x2" in {p["clip_id"] for p in posts} and "x1" not in {p["clip_id"] for p in posts}
         cfg["buffer_days"] = 0                          # queue "full": a new link waits
         Path(cfg["links"]).write_text("https://youtu.be/" + "a" * 10 + "c\n")
         state["tasks"]["T3"]["state"] = "failed"      # nothing processing, so only the full queue holds it back
         n = calls.count("/tasks/")
         run_once(api, cfg, state)
         assert calls.count("/tasks/") == n
+    # chat spikes: a quiet stream with two bursts finds exactly those two moments
+    stamps = [1000 + i * 20 for i in range(540)] + [1000 + 1800 + i * 0.2 for i in range(100)] \
+        + [1000 + 7200 + i * 0.3 for i in range(80)]
+    assert chat_spikes(stamps, 1000, 3 * 3600) == [1800, 7200], chat_spikes(stamps, 1000, 3 * 3600)
+    assert chat_spikes(stamps[:30], 1000, 3600) == []
+    assert clip_seconds("75:30") == 4530 and clip_seconds("1:02:03") == 3723 and hms(3723) == "1:02:03"
     assert video_id("https://www.youtube.com/shorts/abcdefghijk?x=1") == "abcdefghijk"
     assert video_id("https://www.youtube.com/watch?t=5&v=abcdefghijk") == "abcdefghijk" and not video_id("https://x.com/a")
     now = datetime(2026, 1, 1, 13, 0).astimezone()
