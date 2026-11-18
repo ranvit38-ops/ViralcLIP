@@ -30,6 +30,7 @@ No subscriptions, credits or watermarks. Everything runs on your machine.
 5. **Automate** (optional): connect your Twitch account(s) or YouTube channel(s) in **Automation**.
    - New streams and videos are imported, clipped, optionally auto-approved, rendered, and handed to the auto-publish rule.
    - Only your own connected channels can be imported. See `docs/TWITCH_SETUP.md`.
+   - **Twitch chat spikes:** while the worker runs, it watches the chat of your own connected Twitch channels (anonymously, read-only) and stores only the time of each message, in `backend/data/chat/<channel>.log`. Never message text, never usernames. When you analyze one of your VODs that the log covers, clips around a chat spike get +20 points (`CHAT_SPIKE_BONUS`) and the reason "Twitch chat spiked here". Only chat recorded while ViralClip was running counts. `GET /api/chat/status` shows what is being recorded.
 6. **Publish**: connect one or more YouTube channels. Then upload now, schedule, bulk-schedule (daily, every other day, weekly), or turn on an auto-publish rule. Rules only ever take clips you approved.
 
 ## Quick start (no Docker)

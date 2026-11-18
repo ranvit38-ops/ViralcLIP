@@ -255,9 +255,22 @@ def loudness_candidates(loud: list[float], min_len: float, max_len: float, impac
     return out
 
 
-def select_clips(segments, duration, min_len, max_len, count, loud=None, impact=None) -> list[dict]:
+def chat_boost(cands: list[dict], spikes: list[dict], bonus: float, pad: float = 10) -> list[dict]:
+    """+bonus (clamped to 100) and a reason for every window overlapping a 30 s chat spike (+-pad s).
+    spikes: chat.spikes() output, [{offset_s, count}]. No spikes = candidates unchanged."""
+    for c in cands:
+        hit = [s["count"] for s in spikes if s["offset_s"] - pad < c["end"] and c["start"] < s["offset_s"] + 30 + pad]
+        if hit:
+            c["score"] = round(min(100.0, c["score"] + bonus), 1)
+            c["breakdown"] = {**c["breakdown"], "chat_spike": max(hit)}
+            c["reason"] = f"{c['reason']} Twitch chat spiked here ({max(hit)} messages in 30 s).".strip()
+    return cands
+
+
+def select_clips(segments, duration, min_len, max_len, count, loud=None, impact=None, chat_spikes=None,
+                 chat_bonus: float = 20) -> list[dict]:
     speech = sum(s["end"] - s["start"] for s in segments)
     cands = speech_candidates(segments, min_len, max_len, loud, impact)
     if speech < 0.2 * duration or not cands:
         cands += loudness_candidates(loud or [], min_len, max_len, impact)
-    return pick(cands, count)
+    return pick(chat_boost(cands, chat_spikes or [], chat_bonus), count)

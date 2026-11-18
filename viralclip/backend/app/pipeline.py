@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from sqlalchemy import delete, select
 
-from . import config, llm, longaudio, selection, trends
+from . import chat, config, llm, longaudio, selection, trends
 from .db import SessionLocal
 from .models import Clip, Job, Project, Transcript, User
 from .projects import project_dir, source_path
@@ -165,6 +165,7 @@ def analyze(job_id: int, ctx: Ctx):
         prev_status, p.status = p.status, "processing"
         db.commit()
         src, duration = source_path(p), p.duration
+        twitch_meta = (p.settings or {}).get("twitch")
         tr = db.scalar(select(Transcript).where(Transcript.project_id == p.id))
         cached = None if (tr is None or params["retranscribe"]) else (tr.segments, tr.language)
     try:
@@ -201,6 +202,9 @@ def analyze(job_id: int, ctx: Ctx):
         if speech < 0.2 * duration or not cands:
             cands += selection.loudness_candidates(loud, min_len, max_len, impact)
         cands = [c for c in cands if not any(selection._overlap(c, k) for k in keep_windows)]
+        if twitch_meta:  # before the shortlist, so chat-spike moments reach the AI and the final pick
+            # ponytail: the LLM rerank blends 50/50, so with an LLM the bonus is effectively halved
+            cands = selection.chat_boost(cands, chat.vod_spikes(twitch_meta), chat.BONUS)
         until = llm.deadline()  # one time budget for the whole AI stage; past it, clips get basic metadata
         if llm.configured() and cands:
             # Only send the strongest few to the (slow) LLM.
