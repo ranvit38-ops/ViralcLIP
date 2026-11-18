@@ -30,6 +30,7 @@ No subscriptions, credits or watermarks. Everything runs on your machine.
 5. **Automate** (optional): connect your Twitch account(s) or YouTube channel(s) in **Automation**.
    - New streams and videos are imported, clipped, optionally auto-approved, rendered, and handed to the auto-publish rule.
    - Only your own connected channels can be imported. See `docs/TWITCH_SETUP.md`.
+   - **Link queue** (`POST /api/queue`, up to 50 links): paste links to your own YouTube, Twitch or TikTok videos once. While automation is on, the next link is imported only when nothing is importing, analyzing or rendering and fewer than `queue_buffer_days` (default 3) days of posts are lined up on your fullest account (posts/day from your auto-publish rules, default 6). Links to videos that aren't yours are skipped, never downloaded. `GET /api/automation/status` is the weekly glance: queue counts, scheduled posts, days of runway, recent failures, and whether to add more links.
 6. **Publish**: connect one or more YouTube channels. Then upload now, schedule, bulk-schedule (daily, every other day, weekly), or turn on an auto-publish rule. Rules only ever take clips you approved.
 
 ## Quick start (no Docker)
