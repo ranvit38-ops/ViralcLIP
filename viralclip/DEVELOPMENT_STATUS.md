@@ -20,13 +20,15 @@ _Last updated: all planned phases are implemented. What's verified and what isn'
 | YouTube | OAuth with multiple channels; Fernet-encrypted tokens; refresh and revoke; resumable `videos.insert` that resumes the same session after a crash (no duplicates); quota-aware queue (default 6 per channel per day); schedule and bulk schedule (daily, every other day, weekly, custom) with preview; calendar; queue with pause/resume/cancel/retry; auto-publish rules (approved clips only); own-channel link import (yt-dlp, up to 4K) | pytest with Google mocked + browser with Google mocked |
 | Twitch | OAuth with multiple accounts; VOD list; own-VOD import (yt-dlp); dedupe | pytest with Twitch and yt-dlp mocked |
 | Link import | `POST /api/import`: one box for Twitch VODs, YouTube videos/Shorts/lives and TikTok posts (incl. `vm.tiktok.com` short links, one redirect, 5 s); own accounts only (TikTok via `video/list`, up to 10 pages, needs the `video.list` scope); duplicate 409 carries `project_id`; `GET /api/import/detect` for instant UI feedback, no network | pytest with all three platforms and yt-dlp mocked |
+| Link queue | `POST /api/queue` (≤50 links, YouTube/Twitch/TikTok, own accounts only): one link at a time, the next starts only when nothing is importing/analyzing/rendering and fewer than `queue_buffer_days` (default 3) of posts are lined up; skipped links are never downloaded; `/links` page; `GET /api/automation/status` feeds the dashboard "This week" panel and the "Add more links" banner | pytest + real browser/worker run with Google and Twitch faked |
+| Twitch chat spikes | Worker records message timestamps only (anonymous IRC, own connected channels) to `data/chat/<login>.log`; clips overlapping a spike get +20 (`CHAT_SPIKE_BONUS`) and a visible reason; one recorder across workers (lockfile) | pytest + worker run against a fake IRC server |
 | Learning from your own clips | Daily stats sync in the worker tick (under the tick lock, once per 24 h per account): YouTube `videos.list part=statistics` 50 ids per call; TikTok `video/query` when `video.list` is granted. `trends.examples_for` puts your top 5 clips by views (≥ 3 days old) ahead of similar-Shorts research; provenance lists them under `metadata_sources.own`; `/api/youtube/stats` has `top_clips` | pytest with Google/TikTok mocked |
 | TikTok | Login Kit OAuth with multiple accounts; Fernet-encrypted tokens with refresh and revoke; direct post (chunked FILE_UPLOAD, status polling) and draft-to-inbox mode; unaudited apps limited to SELF_ONLY; per-account daily cap (default 15); worker-run scheduling (TikTok has no publish-at); duplicate guard; auto-publish rules (approved + rendered only) | pytest with TikTok mocked (SQLite and Postgres 16) |
 | Automation | Watches Twitch and YouTube sources every 30 min → import → analyze → opt-in auto-approve (top N, minimum score) → render → auto-publish; one download at a time; skips live streams and back catalog; optional source cleanup; activity log | pytest (chain, idempotency, isolation) + browser (settings, toggle, log) |
 | Settings | Defaults for clip length/count/aspect/layout/captions/effects, metadata preferences, model; system info (disk, models, LLM) | Browser (persistence) |
 | Infrastructure | SQLite or PostgreSQL; Alembic migrations, safe when processes start concurrently; Docker Compose (Ubuntu 24.04 image) | Suite passes on Postgres 16; images built and run end to end |
 
-**Tests:** backend 128 passed (`cd backend && .venv/bin/python -m pytest -q`). Frontend tsc, eslint and build are clean. The browser end-to-end script (`frontend/e2e/clips.e2e.cjs`) passed 38 checks, and a separate whole-product smoke test covered every page at desktop and 390 px with no console errors.
+**Tests:** backend 147 passed (with `VC_MIN_FREE_GB=0.5` on a nearly full disk) (`cd backend && .venv/bin/python -m pytest -q`). Frontend tsc, eslint and build are clean. The browser end-to-end script (`frontend/e2e/clips.e2e.cjs`) passed 38 checks, and a separate whole-product smoke test covered every page at desktop and 390 px with no console errors.
 
 ## Not verified (impossible without your real accounts)
 
@@ -35,6 +37,8 @@ _Last updated: all planned phases are implemented. What's verified and what isn'
 - **Real TikTok sign-in and posting**, the `video/list` and `video/query` calls, and `publicaly_available_post_id`. Mocked, and written without access to TikTok's developer docs. Items to check are marked `UNVERIFIED` in `backend/app/tiktok.py` and "(verify)" in `docs/TIKTOK_SETUP.md`.
 - **Real YouTube research calls.** `search.list`/`videos.list` are mocked in tests; check Settings → AI after adding `YOUTUBE_RESEARCH_API_KEY` and regenerate one clip's hashtags.
 - **yt-dlp against live YouTube and Twitch.** It works today, but it breaks whenever those sites change. Update it with `pip install -U yt-dlp`.
+
+- **Twitch chat recording over real TLS** (irc.chat.twitch.tv:6697) is untested; only a fake plain-socket server was used. After your first stream, `backend/data/chat/<channel>.log` should be full of numbers.
 
 ## Known limits
 
