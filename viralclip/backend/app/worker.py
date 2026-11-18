@@ -200,6 +200,8 @@ def main():
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(name)s %(levelname)s %(message)s")
     init_db()
     log.info("worker started (pid %s)", os.getpid())
+    from . import chat
+    chat.start()  # daemon thread; records only in the one worker holding DATA_DIR/chat.lock
     last_sweep = 0.0
     while True:
         if time.time() - last_sweep > 60:

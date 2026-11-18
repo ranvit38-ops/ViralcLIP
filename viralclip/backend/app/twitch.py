@@ -273,10 +273,17 @@ def create_import(db: Session, user: User, vod_id: str, automated: bool = False)
         raise HTTPException(403, f"This VOD belongs to \"{vod.get('user_name', 'another channel')}\", which isn't one of your "
                                  "connected Twitch accounts. Import only works for your own streams; connect that account first.")
     # Source-quality Twitch VODs run ~3-4 GB/hour; reserve that plus headroom.
-    est = int(parse_duration(vod.get("duration", "")) / 3600 * 4 * 1024**3)
-    return start_import(db, user.id, "twitch", vod_id, mine[vod["user_id"]].id, vod.get("title") or f"Twitch VOD {vod_id}",
-                        "twitch_import", {"video_id": vod_id, "url": f"https://www.twitch.tv/videos/{vod_id}", "source": "Twitch"},
-                        est_bytes=est, automated=automated)
+    secs = parse_duration(vod.get("duration", ""))
+    est = int(secs / 3600 * 4 * 1024**3)
+    acc = mine[vod["user_id"]]
+    p = start_import(db, user.id, "twitch", vod_id, acc.id, vod.get("title") or f"Twitch VOD {vod_id}",
+                     "twitch_import", {"video_id": vod_id, "url": f"https://www.twitch.tv/videos/{vod_id}", "source": "Twitch"},
+                     est_bytes=est, automated=automated)
+    # What chat.vod_spikes needs to line the recorded chat up with this VOD. Reassign: JSON doesn't track mutation.
+    p.settings = {**(p.settings or {}), "twitch": {"login": acc.login, "vod_id": vod_id,
+                                                   "started_at": vod.get("created_at"), "duration_s": secs}}
+    db.commit()
+    return p
 
 
 class ImportIn(BaseModel):

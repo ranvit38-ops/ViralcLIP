@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from . import auth, automation, clips, importer, projects, tiktok, twitch, youtube
+from . import auth, automation, chat, clips, importer, projects, tiktok, twitch, youtube
 from .db import init_db
 
 log = logging.getLogger("viralclip")
@@ -18,6 +18,7 @@ app.include_router(twitch.router)
 app.include_router(tiktok.router)
 app.include_router(automation.router)
 app.include_router(importer.router)
+app.include_router(chat.router)
 
 
 @app.exception_handler(Exception)
