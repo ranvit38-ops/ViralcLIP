@@ -239,6 +239,24 @@ class SourceVideo(Base):
     created_at: Mapped[datetime] = _created()
 
 
+class LinkQueueItem(Base):
+    """A pasted link waiting its turn: automation imports the next one when the post schedule runs low."""
+    __tablename__ = "link_queue_items"
+    __table_args__ = (UniqueConstraint("user_id", "url"),)
+    id: Mapped[int] = _id()
+    user_id: Mapped[int] = _fk("users.id")
+    url: Mapped[str] = mapped_column(String(500))
+    platform: Mapped[str] = mapped_column(String(10))  # youtube | twitch | tiktok
+    external_id: Mapped[str | None] = mapped_column(String(64))  # NULL for a TikTok short link until resolved
+    # waiting | started | done | skipped | failed
+    status: Mapped[str] = mapped_column(String(10), default="waiting", index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), index=True)
+    tries: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
 class AutomationEvent(Base):
     """Activity log: what automation did and when."""
     __tablename__ = "automation_events"

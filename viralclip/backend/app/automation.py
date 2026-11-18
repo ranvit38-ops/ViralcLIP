@@ -57,6 +57,7 @@ class AutomationSettings(BaseModel):
     auto_approve: AutoApprove = AutoApprove()
     auto_render: bool = True
     delete_source_after_days: int | None = Field(None, ge=1, le=365)
+    queue_buffer_days: int = Field(3, ge=1, le=14)  # link queue: start the next link below this many days of posts
 
 
 def settings_of(user: User) -> dict:
@@ -297,6 +298,8 @@ def run_for_user(db: Session, user: User, force_poll: bool = False) -> None:
             event(db, user.id, "error", f"Import skipped: {e.detail}")
             db.commit()
     process_projects(db, user, s)
+    from . import linkqueue
+    linkqueue.tick(db, user, s)
 
 
 def tick() -> int:
