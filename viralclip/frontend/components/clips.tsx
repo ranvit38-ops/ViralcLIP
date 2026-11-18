@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, Film, Pencil, Play, RotateCcw, Sparkles, X } from "lucide-react";
+import { Check, Download, Film, MessageSquare, Pencil, Play, RotateCcw, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { api, downloadPost, fmtTime, type Clip, type Job } from "@/lib/api";
@@ -17,9 +17,31 @@ export function isAi(c: Clip) {
   return String(c.score_breakdown?.method ?? "").includes("llm");
 }
 
+const SPIKE = "Twitch chat spiked";
+
+/** Splits the clip's reason text into [other reasons, chat-spike sentences]. */
+export function splitReason(reason: string): [string, string[]] {
+  const rest: string[] = [], spikes: string[] = [];
+  for (const part of (reason ?? "").split(new RegExp(`(?=${SPIKE})`))) {
+    if (!part.startsWith(SPIKE)) { rest.push(part); continue; }
+    // the spike reason runs to the end of its sentence; anything after is another reason
+    const m = part.match(/^(.*?[.!?])\s+(\S[\s\S]*)$/);
+    spikes.push((m ? m[1] : part).trim());
+    if (m) rest.push(m[2]);
+  }
+  return [rest.join(" ").replace(/\s+/g, " ").trim(), spikes];
+}
+
 export function ScoreBreakdown({ clip }: { clip: Clip }) {
   const rows = Object.entries(clip.score_breakdown ?? {}).filter(([, v]) => typeof v === "number");
+  const [reason, spikes] = splitReason(clip.reason);
   return (
+    <div className="space-y-2">
+    {spikes.map((s, i) => (
+      <p key={i} className="flex items-start gap-2 rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-xs text-violet-100">
+        <MessageSquare size={14} className="mt-px shrink-0 text-violet-300" aria-hidden /> <span><span className="sr-only">Chat spike: </span>{s}</span>
+      </p>
+    ))}
     <details className="group text-xs">
       <summary className="cursor-pointer select-none text-muted hover:text-fg">
         Score <span className="font-semibold tabular-nums text-fg">{Math.round(clip.score)}</span>/100
@@ -34,12 +56,13 @@ export function ScoreBreakdown({ clip }: { clip: Clip }) {
             <span className="text-right tabular-nums">{Math.round((v as number) * 100)}</span>
           </div>
         ))}
-        <p className="pt-1 text-muted">{clip.reason}</p>
+        {reason && <p className="pt-1 text-muted">{reason}</p>}
         <p className="pt-1 text-[11px] text-muted/80">
           This is a heuristic ranking of how well the excerpt stands alone. It is not a prediction of views.
         </p>
       </div>
     </details>
+    </div>
   );
 }
 
