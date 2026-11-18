@@ -496,7 +496,8 @@ def caption_lines(words: list[dict], per_line: int) -> list[dict]:
         cur.append(w)
         nxt = words[i + 1] if i + 1 < len(words) else None
         if len(cur) >= per_line or w["word"].endswith((".", "?", "!", ",")) or nxt is None or nxt["start"] - w["end"] > 0.6:
-            lines.append({"start": round(cur[0]["start"], 2), "end": round(cur[-1]["end"], 2),
+            # Whisper can time a word as zero-length; such a line would never show, and the editor rejects it on save
+            lines.append({"start": round(cur[0]["start"], 2), "end": round(max(cur[-1]["end"], cur[0]["start"] + 0.01), 2),
                           "text": " ".join(x["word"] for x in cur), "words": cur})
             cur = []
     return lines

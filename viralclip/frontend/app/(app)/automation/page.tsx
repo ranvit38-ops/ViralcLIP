@@ -143,7 +143,7 @@ function Automation() {
           </label>
           {st.waiting_review > 0 && <Link href="/clips?review_status=suggested" className="text-sm text-accent hover:underline">{st.waiting_review} clip(s) waiting for your review →</Link>}
         </Card>
-        {st.settings.enabled && watching === 0 && <p className="text-sm text-amber-200">Automation is on but no sources are selected below, so nothing will be imported.</p>}
+        {st.settings.enabled && watching === 0 && <p className="text-sm text-amber-200">Automation is on but no sources are selected below, so only links in the <Link href="/links" className="text-accent hover:underline">Link Queue</Link> will be imported.</p>}
 
         <Step n={1} title="Sources">
           <div className="space-y-5">
@@ -296,7 +296,7 @@ function Automation() {
                 <li key={e.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-sm">
                   <span className="w-36 shrink-0 text-xs text-muted">{fmtDate(e.created_at)}</span>
                   <Badge tone={e.kind === "error" ? "red" : e.kind === "approve" || e.kind === "import" ? "green" : "gray"}><Zap size={10} className="mr-1" />{e.kind}</Badge>
-                  <span className="min-w-0 flex-1">{e.message}</span>
+                  <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{e.message}</span>
                   {e.project_id && <Link href={`/projects/${e.project_id}`} className="text-xs text-accent hover:underline">Open</Link>}
                 </li>
               ))}

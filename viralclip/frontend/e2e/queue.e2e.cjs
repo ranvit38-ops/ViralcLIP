@@ -5,7 +5,8 @@
  *   PORT=8140 node e2e/mock-api.cjs
  *   BACKEND_URL=http://127.0.0.1:8140 npm run build && BACKEND_URL=http://127.0.0.1:8140 npx next start -p 3140
  *   BASE=http://localhost:3140 MOCK=http://127.0.0.1:8140 OUT=/tmp/vc-queue node e2e/queue.e2e.cjs
- * Against a real stack, drop MOCK; the steps that need mock controls are skipped.
+ * Against a real stack, drop MOCK: a fresh user is registered and the checks that need the mock's seed data or
+ * controls are skipped.
  */
 const { chromium } = require("playwright");
 const fs = require("fs");
@@ -20,14 +21,21 @@ function check(cond, msg) {
   if (!cond) throw new Error("CHECK FAILED: " + msg);
   console.log("ok -", msg);
 }
+const TW = MOCK ? "https://www.twitch.tv/videos/111" : "https://www.twitch.tv/videos/111111111"; // real VOD ids are longer
 const mock = (p, json) => fetch(MOCK + p, { method: "POST", body: JSON.stringify(json ?? {}) });
 
 (async () => {
   if (MOCK) await mock("/__mock/reset");
   const browser = await chromium.launch();
   const errors = [];
+  const ctx = await browser.newContext();
+  if (!MOCK) {
+    const r = await ctx.request.post(`${BASE}/api/auth/register`, { data: { email: `e2e-${Date.now()}@example.com`, password: "password123" } });
+    check(r.ok(), "registered a fresh user on the real stack");
+  }
   const run = async (width, name) => {
-    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    const page = await ctx.newPage();
+    await page.setViewportSize({ width, height: 900 });
     page.on("console", (m) => {
       // 404s from endpoints the mock doesn't implement are expected; anything else is a bug
       if (m.type() === "error" && !/Failed to load resource.*404/.test(m.text())) errors.push(`${name} ${page.url()} :: ${m.text()}`);
@@ -47,15 +55,22 @@ const mock = (p, json) => fetch(MOCK + p, { method: "POST", body: JSON.stringify
     check(await page.getByText("clipped one at a time").isVisible(), "queue page explains itself");
 
     const links = [
-      "https://www.youtube.com/watch?v=aaa",
-      "https://www.twitch.tv/videos/111",
-      "https://www.tiktok.com/@me/video/123",
+      MOCK ? "https://www.youtube.com/watch?v=aaa" : "https://www.youtube.com/watch?v=QQQQQQQQQQ1",
+      TW,
+      MOCK ? "https://www.tiktok.com/@me/video/123" : "https://www.tiktok.com/@me/video/7300000000000000123",
       "https://example.com/not-a-video",
-      "https://www.youtube.com/watch?v=someone-else",
+      MOCK ? "https://www.youtube.com/watch?v=someone-else" : "https://www.youtube.com/watch?v=QQQQQQQQQQ2",
     ];
     await page.getByLabel("Links, one per line").fill(links.join("\n"));
     check(await page.getByText("5 links").isVisible(), "counts pasted links");
     await page.getByRole("button", { name: "Add to queue" }).click();
+    if (!MOCK) {
+      // the real API accepts other people's videos here and skips them when their turn comes (ownership needs the platform)
+      await page.waitForSelector("text=4 added to the queue.");
+      check(await page.getByText("1 not added").isVisible(), "shows 1 rejected");
+      check(await page.getByText("Paste a Twitch VOD, YouTube video or TikTok link.").isVisible(), "rejected reason shown");
+      check(await page.getByText("waiting", { exact: true }).count() === 4, "4 waiting chips");
+    } else {
     await page.waitForSelector("text=3 added to the queue.");
     check(await page.getByText("2 not added").isVisible(), "shows 2 rejected");
     check(await page.getByText("Not a YouTube, Twitch or TikTok video link").isVisible(), "rejected reason 1 shown");
@@ -66,11 +81,12 @@ const mock = (p, json) => fetch(MOCK + p, { method: "POST", body: JSON.stringify
     check(await page.getByText("Video is private").isVisible(), "item note shown");
     check(await page.getByRole("link", { name: "Open project" }).count() === 2, "project links for items with project_id");
     check(await page.getByRole("button", { name: "Remove https://www.twitch.tv/videos/222" }).count() === 0, "started item cannot be removed");
+    }
     await shot("queue");
 
-    await page.getByRole("button", { name: "Remove https://www.twitch.tv/videos/111" }).click();
+    await page.getByRole("button", { name: `Remove ${TW}` }).click();
     await page.waitForFunction(() => !document.body.innerText.includes("twitch.tv/videos/111"));
-    check(await page.getByText("waiting", { exact: true }).count() === 2, "removed one waiting item");
+    check(await page.getByText("waiting", { exact: true }).count() === (MOCK ? 2 : 3), "removed one waiting item");
 
     // buffer days persists through PUT /api/automation
     const days = page.getByLabel("Buffer (days)");
@@ -86,8 +102,12 @@ const mock = (p, json) => fetch(MOCK + p, { method: "POST", body: JSON.stringify
     await page.getByRole("link", { name: "Dashboard" }).click();
     await page.waitForSelector("text=This week");
     check(await page.getByText("Links waiting").isVisible(), "dashboard: links waiting tile");
-    check(await page.getByText("Render failed: ffmpeg exited 1").isVisible(), "dashboard: failure listed");
-    check(await page.getByText("mystream").isVisible(), "dashboard: chat channel listed");
+    if (MOCK) {
+      check(await page.getByText("Render failed: ffmpeg exited 1").isVisible(), "dashboard: failure listed");
+      check(await page.getByText("mystream").isVisible(), "dashboard: chat channel listed");
+    } else {
+      check(await page.getByText("Twitch chat recording").count() === 0, "dashboard: chat part hidden with no Twitch channel");
+    }
     check(await page.getByText("Add more links.").count() === 0, "dashboard: no banner while links wait");
 
     if (MOCK) {
