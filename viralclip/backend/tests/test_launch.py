@@ -72,3 +72,21 @@ def test_pidfile_folder_is_created(tmp_path):
     pidfile = tmp_path / "missing" / "launcher.pid"
     run.write_pid(pidfile)
     assert pidfile.read_text() == str(os.getpid())
+
+
+def test_auto_login_only_for_this_pc(monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import config
+    from app.main import app
+    monkeypatch.setattr(config, "AUTO_LOGIN", True)
+    mine = lambda **kw: TestClient(app, base_url="http://localhost", client=("127.0.0.1", 1), **kw)  # noqa: E731
+    c = mine()
+    assert c.get("/api/auth/me").status_code == 200 and c.get("/api/auth/me").json()["email"]
+    assert c.get("/api/clips").status_code == 200              # the cookie it set keeps later requests working
+    assert mine().get("/api/auth/me", headers={"sec-fetch-site": "cross-site"}).status_code == 401
+    assert mine().get("/api/auth/me", headers={"x-forwarded-host": "evil.example:3000"}).status_code == 401
+    assert mine().get("/api/auth/me", headers={"x-forwarded-host": "localhost:3000"}).status_code == 200
+    assert TestClient(app, base_url="http://evil.example", client=("127.0.0.1", 1)).get("/api/auth/me").status_code == 401
+    assert TestClient(app, base_url="http://localhost", client=("192.168.1.5", 1)).get("/api/auth/me").status_code == 401
+    monkeypatch.setattr(config, "AUTO_LOGIN", False)
+    assert mine().get("/api/auth/me").status_code == 401

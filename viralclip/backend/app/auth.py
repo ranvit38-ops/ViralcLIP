@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -39,11 +39,37 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def current_user(vc_session: str | None = Cookie(default=None), db: Session = Depends(get_db)) -> User:
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "[::1]"}
+
+
+def _local_request(request: Request | None) -> bool:
+    """True only for a request that came from this PC's own browser tab on localhost.
+
+    Host / X-Forwarded-Host (set by the Next.js proxy) must be localhost, which blocks DNS-rebinding pages,
+    and a browser-flagged cross-site request is refused, which blocks other websites poking the API.
+    """
+    if not (config.AUTO_LOGIN and request and request.client):
+        return False
+    hosts = [request.headers[h] for h in ("host", "x-forwarded-host") if request.headers.get(h)]
+    names = [h.rsplit(":", 1)[0] if not h.startswith("[") else h.split("]")[0] + "]" for h in hosts]
+    return (request.client.host in ("127.0.0.1", "::1") and bool(names) and all(n in LOCAL_HOSTS for n in names)
+            and request.headers.get("sec-fetch-site", "same-origin") in ("same-origin", "none", "same-site"))
+
+
+def current_user(vc_session: str | None = Cookie(default=None), db: Session = Depends(get_db),
+                 request: Request = None, response: Response = None) -> User:
     if vc_session:
         s = db.scalar(select(AuthSession).where(AuthSession.token_hash == _token_hash(vc_session)))
         if s and s.expires_at.replace(tzinfo=timezone.utc) > now():
             return db.get(User, s.user_id)
+    if response is not None and _local_request(request):  # VC_AUTO_LOGIN: no sign-in screen on your own PC
+        user = db.scalar(select(User).order_by(User.id).limit(1))
+        if user is None:
+            user = User(email="me@localhost.local", password_hash=hash_password(secrets.token_urlsafe(24)))
+            db.add(user)
+            db.commit()
+        _start_session(db, user, response)
+        return user
     raise HTTPException(401, "Not signed in")
 
 

@@ -170,6 +170,7 @@ def main():
     env = load_env()
     env["BACKEND_URL"] = f"http://127.0.0.1:{a.api_port}"
     env.setdefault("APP_URL", f"http://localhost:{a.port}")
+    env.setdefault("VC_AUTO_LOGIN", "true")  # everything below binds to 127.0.0.1, so no sign-in on your own PC
     # Relative paths in .env are relative to backend/ (where the API and workers run).
     env["VC_DATA_DIR"] = str((BACKEND / env.get("VC_DATA_DIR", "data")).resolve())
     # The database lives with the rest of the data (so moving data to D: moves it too).

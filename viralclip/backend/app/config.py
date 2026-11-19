@@ -14,6 +14,8 @@ MIN_FREE_BYTES = int(float(os.getenv("VC_MIN_FREE_GB", "2")) * 1024**3)
 MAX_CHUNK_BYTES = 16 * 1024**2
 
 ALLOW_SIGNUP = os.getenv("VC_ALLOW_SIGNUP", "true").lower() == "true"
+# Skip the sign-in screen for requests from this PC (run.py binds everything to 127.0.0.1). Off by default.
+AUTO_LOGIN = os.getenv("VC_AUTO_LOGIN", "false").lower() == "true"
 APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 SECURE_COOKIES = APP_URL.startswith("https://")
 SESSION_DAYS = 30
